@@ -155,7 +155,7 @@
       '<li><span class="p3">Más adelante</span><b>Diagnóstico con inteligencia artificial</b><small>Conversación libre, fotos y sonidos en lugar de reglas fijas.</small></li>' +
       '<li><span class="p3">Más adelante</span><b>Flotas</b><small>Varios vehículos, reportes de gasto y una sola factura.</small></li></ul></div>' +
       '<div class="card"><h2>Datos de la demo</h2><p class="muted small">Talleres, precios y pedidos son de ejemplo y se guardan solo en este navegador.</p>' +
-      '<div class="actions"><button class="btn sm danger" data-reset="1">Borrar datos de la demo</button><a class="btn sm" href="plan/">Ver plan de crecimiento</a></div></div>';
+      '<div class="actions"><button class="btn sm danger" data-reset="1">Borrar datos de la demo</button><a class="btn sm" href="plan/">Ver plan de crecimiento</a><a class="btn sm" href="presentacion/">Ver presentación</a></div></div>';
   }
 
   // =====================================================================
