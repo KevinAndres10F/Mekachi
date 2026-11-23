@@ -5,3 +5,8 @@
   from = "/taller/*"
   to = "/#demo"
   status = 302
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

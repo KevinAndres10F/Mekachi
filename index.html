@@ -2,11 +2,17 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mekachi · Mecánicas de confianza y repuestos garantizados en Quito</title>
-<meta name="description" content="Mekachi conecta conductores con mecánicas verificadas en Quito y abastece a los talleres con repuestos garantizados entregados en horas.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mekachi · Mecánicas de confianza y repuestos garantizados</title>
+<meta name="description" content="Mekachi: diagnóstico inicial de tu auto, talleres verificados en Quito y repuestos garantizados para cada taller.">
 <meta name="theme-color" content="#0b2540">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12.1 7v14L16 30 3.9 23V9z' fill='%23ffb81c'/%3E%3Cpath d='M10 16.5l4.2 4.2L22.5 12' fill='none' stroke='%230b2540' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mekachi">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
@@ -22,196 +28,26 @@
   </symbol>
 </svg>
 
-<nav class="nav" aria-label="Principal">
-  <div class="wrap">
-    <a class="logo" href="#top"><svg><use href="#mk"/></svg>Mekachi</a>
-    <div class="nav-links">
-      <a class="hide-sm" href="#como">Cómo funciona</a>
-      <a class="hide-sm" href="#talleres">Talleres</a>
-      <a class="hide-sm" href="#conductores">Conductores</a>
-      <a class="hide-sm" href="#estado">Qué falta</a>
-      <a class="btn amber" href="#demo">Probar demo</a>
+<div class="shell">
+  <aside class="side">
+    <a class="logo" href="#/" data-home="1"><svg><use href="#mk"/></svg><span>Mekachi</span></a>
+    <div class="seg modes" role="group" aria-label="Perfil"></div>
+    <nav class="sidenav" id="sidenav" aria-label="Secciones"></nav>
+    <div class="side-foot">
+      <button data-go="acerca" id="side-acerca"></button>
+      <small>Versión demo · Quito</small>
     </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <a class="logo" href="#/" data-home="1" aria-label="Mekachi"><svg><use href="#mk"/></svg><span>Mekachi</span></a>
+      <div class="seg modes" role="group" aria-label="Perfil"></div>
+      <button class="infobtn" data-go="acerca" aria-label="Acerca de la demo" id="top-acerca"></button>
+    </header>
+    <main id="app"></main>
   </div>
-</nav>
-
-<header class="hero" id="top">
-  <div class="wrap">
-    <div>
-      <span class="pill">Quito · Versión demo</span>
-      <h1>Mecánicas de confianza. <em>Repuestos garantizados.</em></h1>
-      <p>Cuéntanos qué le pasa a tu auto, recibe un diagnóstico inicial y encuentra un taller verificado cerca. El taller recibe el repuesto correcto en pocas horas.</p>
-      <div class="cta">
-        <a class="btn amber" href="#demo" data-open="conductor">¿Qué le pasa a mi auto?</a>
-        <a class="btn ghost" href="#demo" data-open="taller" data-view="catalogo">Soy taller</a>
-      </div>
-      <ul class="trust">
-        <li>Diagnóstico inicial gratis</li>
-        <li>Precio cerrado antes de empezar</li>
-        <li>Garantía por escrito</li>
-        <li>Repuestos con factura</li>
-      </ul>
-    </div>
-    <div class="mock" aria-hidden="true">
-      <div class="mock-head"><b>Pedido MK-0001</b><span class="status">En camino</span></div>
-      <ul>
-        <li><span>2 × Pastillas de freno delanteras</span><span>$36,00</span></li>
-        <li><span>1 × Filtro de aceite</span><span>$4,50</span></li>
-        <li><span>1 × Aceite 10W-30, galón</span><span>$28,00</span></li>
-      </ul>
-      <div class="steps">
-        <div class="on"><i></i>Confirmado</div>
-        <div class="on"><i></i>En camino</div>
-        <div><i></i>Entregado</div>
-      </div>
-      <small>Ejemplo ilustrativo</small>
-    </div>
-  </div>
-</header>
-
-<section id="como">
-  <div class="wrap">
-    <div class="eyebrow">Cómo funciona</div>
-    <h2>Un solo lugar para el arreglo y el repuesto</h2>
-    <p class="lead">El conductor encuentra un taller confiable; el taller recibe el trabajo y las piezas sin salir a buscarlas.</p>
-    <div class="grid g3">
-      <div class="card"><div class="stepnum">1</div><h3>El conductor cuenta qué pasa</h3><p>Describe el síntoma y recibe un diagnóstico inicial: causas probables, urgencia y qué servicio necesita.</p></div>
-      <div class="card"><div class="stepnum">2</div><h3>Elige taller en el mapa</h3><p>Ve los talleres verificados que atienden ese problema y solicita el servicio al que le quede mejor.</p></div>
-      <div class="card"><div class="stepnum">3</div><h3>Mekachi lleva el repuesto</h3><p>El taller recibe el trabajo con el diagnóstico y pide ahí mismo las piezas, que llegan en horas y con factura.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="alt" id="talleres">
-  <div class="wrap split">
-    <div>
-      <div class="eyebrow">Para talleres</div>
-      <h2>Más clientes y un solo proveedor de repuestos</h2>
-      <p class="lead">Deja de llamar a cinco almacenes por cada trabajo. Pide desde el teléfono y sigue atendiendo.</p>
-      <a class="btn primary" href="#demo" data-open="taller" data-view="catalogo">Probar el modo Taller</a>
-    </div>
-    <ul class="ticks">
-      <li><b>Clientes nuevos sin comisión</b><span>Los trabajos llegan con el diagnóstico inicial y los repuestos probables.</span></li>
-      <li><b>Repuesto correcto en horas</b><span>Si no es la pieza, la devolución es sencilla.</span></li>
-      <li><b>Una sola factura</b><span>Todas las marcas y líneas en un mismo pedido.</span></li>
-      <li><b>Cotización de piezas difíciles</b><span>Indica marca, modelo y año, y te respondemos con precio y disponibilidad.</span></li>
-      <li><b>Sello Taller Mekachi</b><span>Perfil con calificaciones que te ayuda a ganar confianza.</span></li>
-    </ul>
-  </div>
-</section>
-
-<section id="conductores">
-  <div class="wrap split">
-    <div>
-      <div class="eyebrow">Para conductores</div>
-      <h2>Entiende qué tiene tu auto antes de ir al taller</h2>
-      <p class="lead">Llegas sabiendo qué puede ser, qué tan urgente es y a qué taller ir.</p>
-      <a class="btn primary" href="#demo" data-open="conductor">Hacer un diagnóstico</a>
-    </div>
-    <ul class="ticks">
-      <li><b>Diagnóstico inicial</b><span>Causas probables y nivel de urgencia según lo que notas en el auto.</span></li>
-      <li><b>Mapa de talleres verificados</b><span>Filtrados por especialidad y ordenados por cercanía.</span></li>
-      <li><b>Precio cerrado</b><span>El valor se acuerda antes de empezar el trabajo.</span></li>
-      <li><b>Garantía por escrito</b><span>Sobre la mano de obra y sobre el repuesto.</span></li>
-      <li><b>Historial y recordatorios <span class="soon">Próximamente</span></b><span>Mantenimientos guardados, revisión técnica y tu día de pico y placa.</span></li>
-    </ul>
-  </div>
-</section>
-
-<section class="alt" id="demo">
-  <div class="wrap">
-    <div class="eyebrow">Demo</div>
-    <h2>Prueba la app completa</h2>
-    <p class="lead">Como conductor: describe el problema, mira el diagnóstico y solicita un taller en el mapa. Luego cambia a modo Taller para recibir ese trabajo y pedir los repuestos. Es una demostración: talleres y precios son de ejemplo.</p>
-    <div class="appwin" id="appwin">
-      <div class="appbar">
-        <div class="appbar-top"><span class="logo"><svg><use href="#mk"/></svg>Mekachi</span><div class="seg" id="modes" role="group" aria-label="Modo"></div></div>
-        <div class="tabs" id="tabs" role="navigation" aria-label="Secciones del panel"></div>
-      </div>
-      <div id="app"></div>
-    </div>
-  </div>
-</section>
-
-<section class="band" id="confianza">
-  <div class="wrap">
-    <div class="eyebrow">Confianza</div>
-    <h2>Por qué confiar en Mekachi</h2>
-    <p class="lead">La confianza no se promete: se construye con reglas claras para talleres, repuestos y precios.</p>
-    <div class="grid g3">
-      <div class="card"><h3>Talleres visitados</h3><p>Ningún taller entra a la red sin una visita y un período de prueba. Si baja su calificación, sale.</p></div>
-      <div class="card"><h3>Repuestos con origen claro</h3><p>Solo de distribuidores formales, con factura, y con la pieza marcada como original, alterna o genérica.</p></div>
-      <div class="card"><h3>Todo queda registrado</h3><p>Precio acordado, piezas usadas y fecha. Ese registro es el que respalda la garantía.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="cobertura">
-  <div class="wrap">
-    <div class="eyebrow">Cobertura</div>
-    <h2>Empezamos en Quito, zona por zona</h2>
-    <p class="lead">Abrimos por zonas para poder cumplir la entrega rápida. Después Guayaquil y el resto del país.</p>
-    <div class="zones">
-      <div><b>Norte</b><span>Zona de arranque con los primeros talleres.</span></div>
-      <div><b>Centro norte</b><span>Se suma cuando las entregas del norte sean estables.</span></div>
-      <div><b>Sur</b><span>Con punto de despacho propio en la zona.</span></div>
-      <div><b>Valles y periferia</b><span>Entregas programadas dos veces al día.</span></div>
-    </div>
-  </div>
-</section>
-
-<section id="estado">
-  <div class="wrap">
-    <div class="eyebrow">Estado del producto</div>
-    <h2>Qué ya funciona y qué nos falta</h2>
-    <p class="lead">La demo muestra el recorrido completo, pero todavía sin servidor. Esto es lo que hay que construir para operar con talleres reales.</p>
-    <div class="grid g2">
-      <div class="card">
-        <h3>Ya funciona en la demo</h3>
-        <ul class="ticks" style="margin-top:12px">
-          <li><b>Diagnóstico inicial por síntomas</b><span>19 síntomas con causas, urgencia y repuestos probables.</span></li>
-          <li><b>Mapa de talleres</b><span>Filtro por especialidad y zona, y orden por cercanía.</span></li>
-          <li><b>Solicitud de servicio</b><span>Del conductor al taller, con el diagnóstico adjunto.</span></li>
-          <li><b>Pedido de repuestos</b><span>Catálogo, cotización de piezas fuera de lista y carrito con IVA.</span></li>
-          <li><b>Envío por WhatsApp</b><span>Pedidos y solicitudes ya redactados.</span></li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>Falta para operar de verdad</h3>
-        <ul class="todo">
-          <li><span class="p1">Siguiente</span><b>Cuentas y base de datos</b><small>Registro de talleres y conductores; pedidos y solicitudes guardados en servidor.</small></li>
-          <li><span class="p1">Siguiente</span><b>Talleres y precios reales</b><small>Red de talleres verificados y lista de precios de los distribuidores.</small></li>
-          <li><span class="p1">Siguiente</span><b>Panel de despacho Mekachi</b><small>Para recibir pedidos, cotizar y cambiar estados.</small></li>
-          <li><span class="p2">Después</span><b>Estados y avisos en tiempo real</b><small>Confirmado, en camino, entregado; notificaciones por WhatsApp.</small></li>
-          <li><span class="p2">Después</span><b>Pagos y factura electrónica</b><small>Tarjeta, Deuna y comprobantes del SRI.</small></li>
-          <li><span class="p2">Después</span><b>Calificaciones y garantía</b><small>Reseñas de talleres y registro que respalda la garantía.</small></li>
-          <li><span class="p3">Más adelante</span><b>Diagnóstico con inteligencia artificial</b><small>Conversación libre, fotos y sonidos, en lugar de reglas fijas.</small></li>
-          <li><span class="p3">Más adelante</span><b>Historial, recordatorios y flotas</b><small>Pico y placa, revisión técnica y reportes para empresas.</small></li>
-          <li><span class="p3">Más adelante</span><b>App instalable</b><small>Icono en el teléfono y uso con mala señal.</small></li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="alt" id="preguntas">
-  <div class="wrap" style="max-width:780px">
-    <div class="eyebrow">Preguntas frecuentes</div>
-    <h2 style="margin-bottom:22px">Lo que conviene saber</h2>
-    <details><summary>¿Cuánto cuesta usar Mekachi para un taller?</summary><p>Entrar a la red y recibir clientes no tiene costo. Mekachi gana con la venta de los repuestos que el taller pide.</p></details>
-    <details><summary>¿Qué pasa si el repuesto no es el correcto?</summary><p>Se devuelve y se cambia. Por eso pedimos marca, modelo y año en las piezas que no están en la lista.</p></details>
-    <details><summary>¿Cómo se paga?</summary><p>Por transferencia, Deuna o efectivo contra entrega. Los talleres con historial de pago pueden acceder a plazo.</p></details>
-    <details><summary>¿El diagnóstico reemplaza al mecánico?</summary><p>No. Es una orientación inicial basada en síntomas comunes para que sepas qué tan urgente es y qué taller buscar. El diagnóstico definitivo lo hace el mecánico.</p></details>
-    <details><summary>¿Ya puedo hacer pedidos reales?</summary><p>Todavía no. Esta página es una demostración; los talleres del mapa son de ejemplo y los pedidos reales empiezan con los talleres piloto del norte de Quito.</p></details>
-  </div>
-</section>
-
-<footer>
-  <div class="wrap">
-    <a class="logo" href="#top"><svg><use href="#mk"/></svg>Mekachi</a>
-    <span>Sitio de demostración · Quito, Ecuador · <a href="plan/">Plan de crecimiento</a></span>
-  </div>
-</footer>
+  <nav class="tabbar" id="tabbar" aria-label="Secciones"></nav>
+</div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="vendor/leaflet/leaflet.js"></script>
