@@ -53,9 +53,13 @@
       return '<button data-go="' + v[0] + '"' + (state.view === v[0] ? ' aria-current="page"' : "") + ">" + v[1] +
         (v[0] === "carrito" && n ? '<span class="badge">' + n + "</span>" : "") + "</button>";
     }).join("");
-    $("#tabs").innerHTML = html; $("#bottom").innerHTML = html;
+    $("#tabs").innerHTML = html;
   }
-  function go(v) { state.view = v; render(); window.scrollTo(0, 0); }
+  function go(v) {
+    state.view = v; render();
+    var w = $("#appwin");
+    if (w.getBoundingClientRect().top < 0) w.scrollIntoView({ block: "start" });
+  }
 
   // ---------- Catálogo
   function stepper(key, qty) {

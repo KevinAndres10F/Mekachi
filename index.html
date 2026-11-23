@@ -3,570 +3,180 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mekachi · Plan de crecimiento</title>
-<meta name="description" content="Plan de crecimiento de Mekachi: la app que conecta mecánicas con clientes en Ecuador y gana con los repuestos.">
-<style>
-  :root {
-    --bg: #f6f3ee;
-    --surface: #ffffff;
-    --surface-2: #efeae2;
-    --ink: #1b1d21;
-    --muted: #5d6169;
-    --line: #ddd6ca;
-    --accent: #d9480f;
-    --accent-ink: #ffffff;
-    --accent-soft: #fde8dc;
-    --good: #2b7a4b;
-    --bad: #b3261e;
-    --hero-bg: #16181c;
-    --hero-ink: #f6f3ee;
-    --hero-muted: #a9adb5;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #121417;
-      --surface: #1b1e23;
-      --surface-2: #23272e;
-      --ink: #eeeae3;
-      --muted: #a3a8b1;
-      --line: #30353d;
-      --accent: #ff7a3d;
-      --accent-ink: #16181c;
-      --accent-soft: #3a2418;
-      --good: #6fcf97;
-      --bad: #ff8a80;
-      --hero-bg: #0c0d10;
-    }
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
-  h1, h2, h3 { line-height: 1.15; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
-  h2 { font-size: clamp(1.6rem, 4vw, 2.3rem); margin-bottom: 12px; }
-  h3 { font-size: 1.1rem; margin-bottom: 6px; letter-spacing: -0.01em; }
-  p { margin: 0 0 12px; }
-  a { color: inherit; }
-  .lead { color: var(--muted); max-width: 62ch; margin-bottom: 28px; }
-  .eyebrow {
-    font-size: .78rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-    color: var(--accent); margin-bottom: 10px;
-  }
-
-  /* Nav */
-  nav {
-    position: sticky; top: 0; z-index: 10;
-    background: var(--hero-bg); color: var(--hero-ink);
-    border-bottom: 1px solid rgba(255,255,255,.08);
-  }
-  nav .wrap { display: flex; align-items: center; gap: 20px; height: 54px; }
-  .brand { font-weight: 800; letter-spacing: -0.02em; text-decoration: none; flex: none; }
-  .brand span { color: var(--accent); }
-  .links { display: flex; gap: 18px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; font-size: .9rem; }
-  .links::-webkit-scrollbar { display: none; }
-  .links a { color: var(--hero-muted); text-decoration: none; }
-  .links a:hover { color: var(--hero-ink); }
-
-  /* Hero */
-  header { background: var(--hero-bg); color: var(--hero-ink); padding: 64px 0 72px; }
-  header h1 { font-size: clamp(2.2rem, 7vw, 4.2rem); max-width: 16ch; }
-  header h1 em { font-style: normal; color: var(--accent); }
-  header p { color: var(--hero-muted); max-width: 58ch; margin-top: 20px; font-size: 1.1rem; }
-  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; margin-top: 40px;
-    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; overflow: hidden; }
-  .facts div { background: var(--hero-bg); padding: 18px 20px; }
-  .facts b { display: block; font-size: 1.5rem; letter-spacing: -0.02em; }
-  .facts small { color: var(--hero-muted); font-size: .85rem; }
-
-  section { padding: 64px 0; border-bottom: 1px solid var(--line); }
-  .grid { display: grid; gap: 16px; }
-  .g2 { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
-  .g3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; }
-  .card p:last-child, .card ul:last-child { margin-bottom: 0; }
-  .card p, .card li { color: var(--muted); font-size: .96rem; }
-  .card ul { margin: 8px 0 0; padding-left: 18px; }
-  .card li { margin-bottom: 4px; }
-  .num {
-    display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
-    background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: .9rem; margin-bottom: 12px;
-  }
-  .tag { display: inline-block; font-size: .75rem; font-weight: 700; padding: 3px 9px; border-radius: 99px;
-    background: var(--accent-soft); color: var(--accent); margin-bottom: 10px; }
-  .note {
-    background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 10px 10px 0;
-    padding: 16px 20px; margin-top: 24px; font-size: .96rem;
-  }
-  .note b { color: var(--accent); }
-
-  /* Flow */
-  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; counter-reset: s; }
-  .flow div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; position: relative; }
-  .flow div::before { counter-increment: s; content: counter(s); font-weight: 800; color: var(--accent); font-size: 1.4rem; display: block; margin-bottom: 4px; }
-  .flow b { display: block; margin-bottom: 4px; }
-  .flow span { color: var(--muted); font-size: .92rem; }
-
-  /* Timeline */
-  .timeline { border-left: 2px solid var(--line); margin-left: 8px; padding-left: 26px; display: grid; gap: 22px; }
-  .phase { position: relative; }
-  .phase::before { content: ""; position: absolute; left: -34px; top: 6px; width: 14px; height: 14px; border-radius: 50%;
-    background: var(--accent); border: 3px solid var(--bg); }
-  .phase .when { font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
-  .phase .goal { font-size: .92rem; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--ink) !important; }
-
-  /* Budget */
-  .bar { display: flex; height: 22px; border-radius: 99px; overflow: hidden; gap: 2px; margin-bottom: 20px; }
-  .bar i { display: block; }
-  .budget { width: 100%; border-collapse: collapse; }
-  .budget td { padding: 13px 8px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: .96rem; }
-  .budget td:first-child { width: 18px; padding-right: 0; }
-  .budget td:first-child i { display: block; width: 12px; height: 12px; border-radius: 3px; margin-top: 7px; }
-  .budget small { display: block; color: var(--muted); }
-  .budget .amt { text-align: right; white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .budget .amt small { font-weight: 400; }
-  .c1 { background: #d9480f; } .c2 { background: #1f6f8b; } .c3 { background: #e0a100; }
-  .c4 { background: #5b8c3a; } .c5 { background: #7b5ea7; } .c6 { background: #8a8f98; }
-
-  /* Calculator */
-  .calc { display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; }
-  @media (max-width: 760px) { .calc { grid-template-columns: 1fr; } }
-  .field { margin-bottom: 18px; }
-  .field:last-child { margin-bottom: 0; }
-  .field label { display: flex; justify-content: space-between; gap: 12px; font-size: .93rem; margin-bottom: 4px; }
-  .field output { font-weight: 700; font-variant-numeric: tabular-nums; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  .results { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; align-self: start; }
-  .results div { background: var(--surface); padding: 14px 20px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-  .results span { color: var(--muted); font-size: .93rem; }
-  .results b { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .results .big { background: var(--surface-2); }
-  .results .big b { font-size: 1.6rem; letter-spacing: -0.02em; }
-  .pos { color: var(--good); } .neg { color: var(--bad); }
-
-  /* Metrics */
-  .metrics { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  .metrics th, .metrics td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: .94rem; vertical-align: top; }
-  .metrics th { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); background: var(--surface-2); }
-  .metrics tr:last-child td { border-bottom: 0; }
-  .metrics td:last-child { color: var(--muted); }
-  .scroll { overflow-x: auto; }
-
-  /* Checklist */
-  .check { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .check label { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line);
-    border-radius: 10px; padding: 14px 16px; cursor: pointer; }
-  .check input { width: 18px; height: 18px; margin-top: 4px; accent-color: var(--accent); flex: none; }
-  .check input:checked + span { color: var(--muted); text-decoration: line-through; }
-  .check small { display: block; color: var(--muted); }
-  .progress { font-size: .9rem; color: var(--muted); margin-bottom: 14px; }
-
-  footer { padding: 36px 0 56px; color: var(--muted); font-size: .88rem; }
-</style>
+<title>Mekachi · Mecánicas de confianza y repuestos garantizados en Quito</title>
+<meta name="description" content="Mekachi conecta conductores con mecánicas verificadas en Quito y abastece a los talleres con repuestos garantizados entregados en horas.">
+<meta name="theme-color" content="#0b2540">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2l12.1 7v14L16 30 3.9 23V9z' fill='%23ffb81c'/%3E%3Cpath d='M10 16.5l4.2 4.2L22.5 12' fill='none' stroke='%230b2540' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand.css">
 </head>
 <body>
 
-<nav>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mk" viewBox="0 0 32 32">
+    <path d="M16 2l12.1 7v14L16 30 3.9 23V9z" fill="#ffb81c"/>
+    <path d="M10 16.5l4.2 4.2L22.5 12" fill="none" stroke="#0b2540" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<nav class="nav" aria-label="Principal">
   <div class="wrap">
-    <a class="brand" href="#top">Meka<span>chi</span></a>
-    <div class="links">
-      <a href="#modelo">Modelo</a>
-      <a href="#ecuador">Ecuador</a>
-      <a href="#fases">Fases</a>
-      <a href="#presupuesto">Presupuesto</a>
-      <a href="#crecer">Crecimiento</a>
-      <a href="#numeros">Calculadora</a>
-      <a href="#metricas">Métricas</a>
-      <a href="#riesgos">Riesgos</a>
-      <a href="#pasos">30 días</a>
-      <a href="taller/" style="color:var(--accent);font-weight:700">Panel del taller →</a>
+    <a class="logo" href="#top"><svg><use href="#mk"/></svg>Mekachi</a>
+    <div class="nav-links">
+      <a class="hide-sm" href="#como">Cómo funciona</a>
+      <a class="hide-sm" href="#talleres">Talleres</a>
+      <a class="hide-sm" href="#conductores">Conductores</a>
+      <a class="hide-sm" href="#cobertura">Cobertura</a>
+      <a class="btn amber" href="#demo">Probar demo</a>
     </div>
   </div>
 </nav>
 
-<header id="top">
+<header class="hero" id="top">
   <div class="wrap">
-    <div class="eyebrow">Plan de crecimiento · Quito primero, luego Ecuador</div>
-    <h1>La app trae al cliente. <em>El repuesto paga el negocio.</em></h1>
-    <p>Mekachi conecta a personas que necesitan una mecánica con talleres de confianza, y gana abasteciendo a esos talleres con los repuestos de cada trabajo. Este es el plan para arrancar en Quito con USD 30.000 y llegar a todo el país por etapas.</p>
-    <div class="facts">
-      <div><b>$30.000</b><small>capital inicial</small></div>
-      <div><b>12 meses</b><small>para probar el modelo</small></div>
-      <div><b>Quito → Guayaquil → país</b><small>expansión por ciudades</small></div>
-      <div><b>Sin almacén</b><small>hasta tener datos de venta</small></div>
+    <div>
+      <span class="pill">Quito · Versión demo</span>
+      <h1>Mecánicas de confianza. <em>Repuestos garantizados.</em></h1>
+      <p>Mekachi conecta a los conductores con talleres verificados y lleva a cada taller el repuesto correcto en pocas horas, con factura y garantía.</p>
+      <div class="cta">
+        <a class="btn amber" href="#demo">Soy taller: probar el panel</a>
+        <a class="btn ghost" href="#conductores">Busco una mecánica</a>
+      </div>
+      <ul class="trust">
+        <li>Precio cerrado antes de empezar</li>
+        <li>Garantía por escrito</li>
+        <li>Repuestos con factura</li>
+      </ul>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="mock-head"><b>Pedido MK-0001</b><span class="status">En camino</span></div>
+      <ul>
+        <li><span>2 × Pastillas de freno delanteras</span><span>$36,00</span></li>
+        <li><span>1 × Filtro de aceite</span><span>$4,50</span></li>
+        <li><span>1 × Aceite 10W-30, galón</span><span>$28,00</span></li>
+      </ul>
+      <div class="steps">
+        <div class="on"><i></i>Confirmado</div>
+        <div class="on"><i></i>En camino</div>
+        <div><i></i>Entregado</div>
+      </div>
+      <small>Ejemplo ilustrativo</small>
     </div>
   </div>
 </header>
 
-<section id="modelo">
+<section id="como">
   <div class="wrap">
-    <div class="eyebrow">El modelo</div>
-    <h2>Cómo gana dinero Mekachi</h2>
-    <p class="lead">El cliente particular va al taller una o dos veces al año; el taller compra repuestos todas las semanas. Por eso el ingreso principal sale del taller, no de la comisión al cliente.</p>
-
-    <div class="flow">
-      <div><b>El cliente pide</b><span>Describe el problema o elige un servicio y recibe precio cerrado de un taller cercano.</span></div>
-      <div><b>El taller acepta</b><span>Recibe el trabajo gratis o casi gratis. Ese es el gancho para que entre a la red.</span></div>
-      <div><b>Mekachi abastece</b><span>El taller pide los repuestos en la app; se compran al distribuidor aliado y se entregan en horas.</span></div>
-      <div><b>Mekachi gana</b><span>Margen sobre cada repuesto, y sobre todas las demás compras semanales del taller.</span></div>
-    </div>
-
-    <div class="grid g3" style="margin-top:28px">
-      <div class="card">
-        <span class="tag">Desde el día 1</span>
-        <h3>Margen de repuestos</h3>
-        <p>Entre 15 % y 25 % sobre el precio del distribuidor, según la línea. Es el motor del negocio.</p>
-      </div>
-      <div class="card">
-        <span class="tag">Desde el mes 4</span>
-        <h3>Flotas de empresas</h3>
-        <p>Cooperativas de taxis, repartidores y pymes con vehículos: mantenimiento recurrente con tarifa pactada.</p>
-      </div>
-      <div class="card">
-        <span class="tag">Año 2</span>
-        <h3>Ingresos extra</h3>
-        <p>Comisión pequeña por servicio pagado en la app, plan premium para talleres y referidos de seguros o crédito.</p>
-      </div>
-    </div>
-
-    <div class="note"><b>Por qué no almacén propio al inicio:</b> hay miles de referencias por marca, modelo y año. Con $30.000, un inventario mal elegido deja el negocio sin caja en pocos meses. Primero se vende con stock de distribuidores; el almacén llega cuando los datos digan qué rota.</div>
-  </div>
-</section>
-
-<section id="ecuador">
-  <div class="wrap">
-    <div class="eyebrow">Todo Ecuador</div>
-    <h2>Visión nacional, arranque en Quito</h2>
-    <p class="lead">Lanzar en todo el país a la vez repartiría $30.000 en demasiados frentes: pocos talleres por ciudad, entregas lentas y clientes sin taller cerca. La red tiene que ser densa en un lugar antes de copiarla en otro.</p>
-
+    <div class="eyebrow">Cómo funciona</div>
+    <h2>Un solo lugar para el arreglo y el repuesto</h2>
+    <p class="lead">El conductor encuentra un taller confiable; el taller recibe el trabajo y las piezas sin salir a buscarlas.</p>
     <div class="grid g3">
-      <div class="card">
-        <div class="num">1</div>
-        <h3>Quito, por zonas</h3>
-        <p>Primero una sola zona con talleres y distribuidores cerca; después el resto de la ciudad y los valles. Detalle más abajo.</p>
-      </div>
-      <div class="card">
-        <div class="num">2</div>
-        <h3>Guayaquil</h3>
-        <p>Solo cuando Quito cubra sus costos operativos. Se repite el mismo manual con un aliado local de repuestos.</p>
-      </div>
-      <div class="card">
-        <div class="num">3</div>
-        <h3>Resto del país</h3>
-        <p>Cuenca, Santo Domingo, Manta, Ambato, Machala, Loja. Con un distribuidor aliado por ciudad y un coordinador local, sin oficina propia.</p>
-      </div>
-    </div>
-
-    <h3 style="margin-top:36px">Cómo cubrir Quito</h3>
-    <p class="lead" style="margin:6px 0 14px">Quito es larga y angosta: cruzarla de norte a sur puede tomar más de una hora. Si los talleres están repartidos por toda la ciudad, la entrega rápida es imposible. Por eso se abre por zonas. Los sectores son una propuesta; ajústalos según dónde estén tus contactos y los almacenes de repuestos.</p>
-    <div class="flow">
-      <div><b>Zona de arranque</b><span>Una sola, por ejemplo el norte: Kennedy, El Inca, Comité del Pueblo, Carcelén. Los 10 talleres piloto salen de aquí.</span></div>
-      <div><b>Centro norte</b><span>Se suma cuando la primera zona tenga entregas estables en menos de 3 horas.</span></div>
-      <div><b>Sur</b><span>Villaflora, Solanda, Chillogallo, Quitumbe. Necesita su propio punto de despacho o un distribuidor aliado en la zona.</span></div>
-      <div><b>Valles y periferia</b><span>Cumbayá, Tumbaco, Los Chillos, Calderón. Entregas programadas dos veces al día en lugar de inmediatas.</span></div>
-    </div>
-    <div class="note"><b>Gancho propio de Quito:</b> el día de pico y placa el auto no puede circular en horas pico. Ofrecer «tu día de pico y placa es tu día de taller», con recordatorio según el último dígito de la placa, convierte una molestia semanal en un motivo para agendar.</div>
-
-    <h3 style="margin-top:36px">Ventajas del mercado ecuatoriano que conviene aprovechar</h3>
-    <div class="grid g2" style="margin-top:12px">
-      <div class="card">
-        <h3>Revisión técnica y matriculación</h3>
-        <p>Cada vehículo tiene una fecha anual obligatoria. Un paquete «listo para la revisión» con recordatorio según la placa da un motivo concreto para usar la app cada año.</p>
-      </div>
-      <div class="card">
-        <h3>Cooperativas de transporte</h3>
-        <p>Taxis, buses y carga liviana ya están organizados. Un acuerdo con una directiva puede traer decenas de vehículos de uso intensivo de una sola vez.</p>
-      </div>
-      <div class="card">
-        <h3>Marcas chinas en crecimiento</h3>
-        <p>Sus repuestos suelen ser difíciles de conseguir para el taller de barrio. Resolver eso con buenos aliados puede diferenciar a Mekachi frente al almacén tradicional.</p>
-      </div>
-      <div class="card">
-        <h3>WhatsApp y pagos locales</h3>
-        <p>El taller ya trabaja por WhatsApp y transferencia. La app debe convivir con eso: pedidos por chat, cobro con transferencia, Deuna o tarjeta, y factura electrónica automática.</p>
-      </div>
+      <div class="card"><div class="stepnum">1</div><h3>El conductor pide</h3><p>Describe el problema o elige un servicio y recibe un precio cerrado de un taller verificado cerca.</p></div>
+      <div class="card"><div class="stepnum">2</div><h3>El taller acepta</h3><p>Recibe el trabajo en su panel y pide ahí mismo los repuestos que necesita.</p></div>
+      <div class="card"><div class="stepnum">3</div><h3>Mekachi entrega</h3><p>El repuesto llega al taller en horas, con factura. El trabajo queda registrado y con garantía.</p></div>
     </div>
   </div>
 </section>
 
-<section id="fases">
-  <div class="wrap">
-    <div class="eyebrow">Hoja de ruta</div>
-    <h2>Cinco fases, cada una con su meta</h2>
-    <p class="lead">No se pasa a la siguiente fase sin cumplir la meta de la anterior. Así el dinero se gasta solo en lo que ya está probado.</p>
-
-    <div class="timeline">
-      <div class="phase card">
-        <div class="when">Fase 0 · Mes 1</div>
-        <h3>Validar sin app</h3>
-        <ul>
-          <li>Firmar con 2 o 3 distribuidores: lista de precios, descuento por volumen y plazo de pago.</li>
-          <li>Reclutar 10 talleres piloto en la zona de arranque de Quito y tomarles pedidos por WhatsApp.</li>
-          <li>Entregar con mensajería tercerizada y medir tiempos y errores.</li>
-        </ul>
-        <p class="goal"><b>Meta:</b> 10 talleres comprando cada semana y margen bruto real medido.</p>
-      </div>
-      <div class="phase card">
-        <div class="when">Fase 1 · Meses 2 a 4</div>
-        <h3>Lanzar el producto mínimo</h3>
-        <ul>
-          <li>App web para el cliente: pedir servicio, precio cerrado, seguimiento y calificación.</li>
-          <li>Panel del taller: trabajos recibidos y pedido de repuestos en dos toques.</li>
-          <li>Garantía Mekachi sobre el trabajo y el repuesto.</li>
-        </ul>
-        <p class="goal"><b>Meta:</b> 40 talleres activos y 150 servicios de clientes al mes.</p>
-      </div>
-      <div class="phase card">
-        <div class="when">Fase 2 · Meses 4 a 8</div>
-        <h3>Flotas y densidad</h3>
-        <ul>
-          <li>Cerrar 3 a 5 flotas o cooperativas con tarifa pactada.</li>
-          <li>Cubrir el centro norte y el sur de Quito, y subir la compra por taller.</li>
-          <li>Recordatorios automáticos de mantenimiento, revisión técnica y pico y placa.</li>
-        </ul>
-        <p class="goal"><b>Meta:</b> Quito cubre sus costos operativos.</p>
-      </div>
-      <div class="phase card">
-        <div class="when">Fase 3 · Meses 9 a 12</div>
-        <h3>Mini almacén en Quito y apertura de Guayaquil</h3>
-        <ul>
-          <li>Stock propio solo de lo que más rota: filtros, aceites, pastillas, bujías, baterías.</li>
-          <li>Abrir Guayaquil con el mismo manual y un distribuidor aliado local.</li>
-          <li>Preparar cifras para buscar inversión o crédito.</li>
-        </ul>
-        <p class="goal"><b>Meta:</b> dos ciudades operando y margen mejorado por compra directa.</p>
-      </div>
-      <div class="phase card">
-        <div class="when">Fase 4 · Año 2</div>
-        <h3>Cobertura nacional</h3>
-        <ul>
-          <li>Ciudades intermedias con distribuidor aliado y coordinador local.</li>
-          <li>Plan premium para talleres: inventario, clientes, facturación.</li>
-          <li>Seguros, crédito para reparaciones y marca propia en líneas simples.</li>
-        </ul>
-        <p class="goal"><b>Meta:</b> presencia en las principales ciudades del país.</p>
-      </div>
+<section class="alt" id="talleres">
+  <div class="wrap split">
+    <div>
+      <div class="eyebrow">Para talleres</div>
+      <h2>Más clientes y un solo proveedor de repuestos</h2>
+      <p class="lead">Deja de llamar a cinco almacenes por cada trabajo. Pide desde el teléfono y sigue atendiendo.</p>
+      <a class="btn primary" href="#demo">Probar el panel del taller</a>
     </div>
-  </div>
-</section>
-
-<section id="presupuesto">
-  <div class="wrap">
-    <div class="eyebrow">Presupuesto</div>
-    <h2>Cómo repartir los $30.000</h2>
-    <p class="lead">Propuesta para los primeros 12 meses. La mayor parte va a capital de trabajo y a conseguir talleres, no a tecnología.</p>
-
-    <div class="card">
-      <div class="bar" aria-hidden="true">
-        <i class="c1" style="width:25%"></i><i class="c2" style="width:20%"></i><i class="c3" style="width:16.7%"></i>
-        <i class="c4" style="width:15%"></i><i class="c5" style="width:5%"></i><i class="c6" style="width:18.3%"></i>
-      </div>
-      <table class="budget">
-        <tr><td><i class="c1"></i></td><td><b>Capital de trabajo para repuestos</b><small>Comprar contra pedido y dar plazos cortos a talleres cumplidos. En la fase 3 financia el mini almacén.</small></td><td class="amt">$7.500<small>25 %</small></td></tr>
-        <tr><td><i class="c2"></i></td><td><b>Producto y tecnología</b><small>App web, panel del taller, pagos, facturación electrónica y servidores.</small></td><td class="amt">$6.000<small>20 %</small></td></tr>
-        <tr><td><i class="c3"></i></td><td><b>Captación de talleres y clientes</b><small>Visitas en calle, material para talleres, publicidad local y promociones de primera compra.</small></td><td class="amt">$5.000<small>17 %</small></td></tr>
-        <tr><td><i class="c4"></i></td><td><b>Operación y entregas</b><small>Mensajería tercerizada, atención de pedidos y devoluciones.</small></td><td class="amt">$4.500<small>15 %</small></td></tr>
-        <tr><td><i class="c5"></i></td><td><b>Legal y contable</b><small>Constitución de la compañía, SRI, contratos con talleres y distribuidores, términos de garantía.</small></td><td class="amt">$1.500<small>5 %</small></td></tr>
-        <tr><td><i class="c6"></i></td><td><b>Reserva</b><small>Colchón para garantías, cartera vencida e imprevistos. No se toca para crecer.</small></td><td class="amt">$5.500<small>18 %</small></td></tr>
-      </table>
-    </div>
-    <div class="note"><b>Regla de caja:</b> ningún taller recibe crédito hasta tener cuatro semanas de compras pagadas a tiempo, y el cupo total de crédito nunca supera el capital de trabajo disponible.</div>
-  </div>
-</section>
-
-<section id="crecer">
-  <div class="wrap">
-    <div class="eyebrow">Palancas de crecimiento</div>
-    <h2>Qué hace crecer cada lado de la red</h2>
-    <p class="lead">Primero talleres, después clientes. Un cliente sin taller cerca se pierde; un taller sin clientes igual puede comprar repuestos.</p>
-
-    <div class="grid g3">
-      <div class="card">
-        <h3>Talleres</h3>
-        <ul>
-          <li>Clientes nuevos sin pagar comisión.</li>
-          <li>Repuesto correcto en horas, con devolución fácil.</li>
-          <li>Un solo proveedor y una sola factura en vez de llamar a cinco almacenes.</li>
-          <li>Sello «Taller Mekachi» y perfil con calificaciones.</li>
-          <li>Plazo de pago para quienes compran con regularidad.</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>Clientes</h3>
-        <ul>
-          <li>Precio cerrado antes de ir al taller.</li>
-          <li>Garantía escrita sobre mano de obra y repuesto.</li>
-          <li>Historial del vehículo, útil al venderlo.</li>
-          <li>Recordatorios de mantenimiento y revisión técnica.</li>
-          <li>Pago con tarjeta o en cuotas.</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>Flotas</h3>
-        <ul>
-          <li>Tarifa fija por tipo de mantenimiento.</li>
-          <li>Reporte mensual de gasto por vehículo.</li>
-          <li>Prioridad de atención para reducir días parados.</li>
-          <li>Una sola factura para toda la flota.</li>
-          <li>Red de talleres en varias ciudades.</li>
-        </ul>
-      </div>
-    </div>
-
-    <h3 style="margin-top:36px">Cómo evitar que cliente y taller se salten la app</h3>
-    <div class="grid g2" style="margin-top:12px">
-      <div class="card"><h3>La garantía solo vale dentro</h3><p>Si el trabajo se registró y pagó en Mekachi, hay garantía. Si se arregló por fuera, no.</p></div>
-      <div class="card"><h3>El ingreso no depende de la comisión</h3><p>Aunque el cliente vuelva directo al taller, ese taller sigue comprando los repuestos a Mekachi.</p></div>
-      <div class="card"><h3>Beneficios que el taller no puede dar solo</h3><p>Cuotas, historial digital y recordatorios hacen más cómodo volver por la app.</p></div>
-      <div class="card"><h3>Mejor posición para quien cumple</h3><p>Los talleres con más trabajos cerrados en la app aparecen primero y reciben más clientes.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="numeros">
-  <div class="wrap">
-    <div class="eyebrow">Calculadora</div>
-    <h2>¿Cuántos talleres hacen falta para cubrir costos?</h2>
-    <p class="lead">Los valores iniciales son supuestos para arrancar la conversación. Cámbialos con las cifras que conoces del mercado.</p>
-
-    <div class="calc">
-      <div class="card">
-        <div class="field"><label for="t">Talleres activos <output id="ot"></output></label><input type="range" id="t" min="5" max="300" step="5" value="40"></div>
-        <div class="field"><label for="p">Pedidos por taller a la semana <output id="op"></output></label><input type="range" id="p" min="1" max="15" step="1" value="4"></div>
-        <div class="field"><label for="k">Valor promedio del pedido <output id="ok"></output></label><input type="range" id="k" min="10" max="150" step="5" value="35"></div>
-        <div class="field"><label for="m">Margen sobre el repuesto <output id="om"></output></label><input type="range" id="m" min="5" max="35" step="1" value="18"></div>
-        <div class="field"><label for="c">Costo de cada entrega <output id="oc"></output></label><input type="range" id="c" min="0" max="5" step="0.25" value="2"></div>
-        <div class="field"><label for="f">Costos fijos al mes <output id="of"></output></label><input type="range" id="f" min="500" max="8000" step="100" value="2500"></div>
-      </div>
-      <div class="results" aria-live="polite">
-        <div><span>Pedidos al mes</span><b id="r-ped"></b></div>
-        <div><span>Venta de repuestos al mes</span><b id="r-ven"></b></div>
-        <div><span>Margen bruto</span><b id="r-mar"></b></div>
-        <div><span>Costo de entregas</span><b id="r-log"></b></div>
-        <div><span>Costos fijos</span><b id="r-fij"></b></div>
-        <div class="big"><span>Resultado mensual</span><b id="r-res"></b></div>
-        <div class="big"><span>Talleres para no perder</span><b id="r-eq"></b></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="metricas">
-  <div class="wrap">
-    <div class="eyebrow">Métricas</div>
-    <h2>Lo que hay que mirar cada semana</h2>
-    <p class="lead">Pocas cifras, siempre las mismas. Si una se mueve mal dos semanas seguidas, se actúa.</p>
-    <div class="scroll">
-      <table class="metrics">
-        <tr><th>Métrica</th><th>Qué dice</th><th>Señal de alerta</th></tr>
-        <tr><td><b>Talleres que compraron esta semana</b></td><td>Tamaño real de la red</td><td>Muchos registrados y pocos comprando</td></tr>
-        <tr><td><b>Compra semanal por taller</b></td><td>Cuánto de su gasto en repuestos pasa por Mekachi</td><td>Solo piden lo que no consiguen en otro lado</td></tr>
-        <tr><td><b>Margen bruto después de entrega</b></td><td>Si cada pedido deja dinero</td><td>Pedidos pequeños que no pagan la mensajería</td></tr>
-        <tr><td><b>Tiempo de entrega</b></td><td>Si el taller puede confiar</td><td>Más de medio día en pedidos urbanos</td></tr>
-        <tr><td><b>Devoluciones y repuesto equivocado</b></td><td>Calidad del catálogo y del pedido</td><td>Sube al sumar marcas o ciudades</td></tr>
-        <tr><td><b>Cartera vencida</b></td><td>Salud de la caja</td><td>Talleres con más de 15 días de atraso</td></tr>
-        <tr><td><b>Clientes que repiten</b></td><td>Si la app aporta más allá del primer servicio</td><td>Buenas calificaciones pero nadie vuelve</td></tr>
-      </table>
-    </div>
-  </div>
-</section>
-
-<section id="riesgos">
-  <div class="wrap">
-    <div class="eyebrow">Riesgos</div>
-    <h2>Lo que puede salir mal y cómo cubrirse</h2>
-    <div class="grid g2" style="margin-top:24px">
-      <div class="card"><h3>El distribuidor vende directo al taller</h3><p>Acuerdos por escrito y, sobre todo, dar al taller algo que el distribuidor no da: clientes, entrega rápida y un solo proveedor para todas las marcas.</p></div>
-      <div class="card"><h3>Crédito a talleres que no pagan</h3><p>Contado al inicio, cupos pequeños que crecen con el historial y corte automático de pedidos con atraso.</p></div>
-      <div class="card"><h3>Repuestos de mala calidad o falsos</h3><p>Solo distribuidores formales con factura, y marcar en la app si la pieza es original, alterna o genérica.</p></div>
-      <div class="card"><h3>Un mal taller daña la marca</h3><p>Visita antes de aceptar, período de prueba y salida de la red si baja de cierta calificación.</p></div>
-      <div class="card"><h3>Inventario que no rota</h3><p>No comprar stock antes de la fase 3, y entonces solo referencias con ventas semanales comprobadas.</p></div>
-      <div class="card"><h3>Crecer más rápido que la caja</h3><p>Abrir ciudad nueva solo con la anterior en equilibrio y la reserva intacta.</p></div>
-    </div>
-  </div>
-</section>
-
-<section id="pasos">
-  <div class="wrap">
-    <div class="eyebrow">Próximos 30 días</div>
-    <h2>Por dónde empezar</h2>
-    <p class="lead">Nada de esto requiere tener la app lista. Marca cada paso al terminarlo; el avance se guarda en este navegador.</p>
-    <div class="progress" id="prog"></div>
-    <ul class="check" id="check">
-      <li><label><input type="checkbox"><span>Elegir la zona de arranque dentro de Quito<small>Donde estén tus mejores contactos y haya distribuidores cerca.</small></span></label></li>
-      <li><label><input type="checkbox"><span>Negociar con 2 o 3 distribuidores<small>Lista de precios, descuento, plazo de pago y política de devoluciones.</small></span></label></li>
-      <li><label><input type="checkbox"><span>Visitar 30 talleres de esa zona y anotar qué compran, a quién y cada cuánto<small>De ahí sale la lista de repuestos de alta rotación.</small></span></label></li>
-      <li><label><input type="checkbox"><span>Cerrar 10 talleres piloto<small>Que acepten pedir por WhatsApp durante un mes.</small></span></label></li>
-      <li><label><input type="checkbox"><span>Acordar la mensajería y probar tiempos de entrega<small>Meta: pedido urbano entregado en menos de 3 horas.</small></span></label></li>
-      <li><label><input type="checkbox"><span>Constituir la compañía y activar la facturación electrónica</span></label></li>
-      <li><label><input type="checkbox"><span>Hablar con una cooperativa de taxis de Quito o una flota pequeña<small>Para entender cuánto gastan y qué les duele.</small></span></label></li>
-      <li><label><input type="checkbox"><span>Definir el alcance de la primera versión de la app<small>Con lo aprendido en el piloto, no antes.</small></span></label></li>
+    <ul class="ticks">
+      <li><b>Clientes nuevos sin comisión</b><span>Te enviamos trabajos de conductores de tu zona.</span></li>
+      <li><b>Repuesto correcto en horas</b><span>Si no es la pieza, la devolución es sencilla.</span></li>
+      <li><b>Una sola factura</b><span>Todas las marcas y líneas en un mismo pedido.</span></li>
+      <li><b>Cotización de piezas difíciles</b><span>Indica marca, modelo y año, y te respondemos con precio y disponibilidad.</span></li>
+      <li><b>Sello Taller Mekachi</b><span>Perfil con calificaciones que te ayuda a ganar confianza.</span></li>
     </ul>
+  </div>
+</section>
+
+<section id="conductores">
+  <div class="wrap split">
+    <div>
+      <div class="eyebrow">Para conductores</div>
+      <h2>Sabes cuánto pagas antes de dejar el auto <span class="soon">Próximamente</span></h2>
+      <p class="lead">La app para conductores llega después del panel de talleres. Así funcionará.</p>
+    </div>
+    <ul class="ticks">
+      <li><b>Talleres verificados</b><span>Visitados por Mekachi y calificados por otros conductores.</span></li>
+      <li><b>Precio cerrado</b><span>El valor se acuerda antes de empezar el trabajo.</span></li>
+      <li><b>Garantía por escrito</b><span>Sobre la mano de obra y sobre el repuesto.</span></li>
+      <li><b>Historial del vehículo</b><span>Cada mantenimiento queda guardado; útil al vender el auto.</span></li>
+      <li><b>Recordatorios</b><span>Mantenimiento, revisión técnica y tu día de pico y placa.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="alt" id="demo">
+  <div class="wrap">
+    <div class="eyebrow">Demo</div>
+    <h2>Prueba el panel del taller</h2>
+    <p class="lead">Busca un repuesto, agrégalo y confirma un pedido. Es una demostración: los precios son de ejemplo y los datos se guardan solo en tu navegador.</p>
+    <div class="appwin" id="appwin">
+      <div class="appbar">
+        <span class="logo"><svg><use href="#mk"/></svg>Mekachi <small>Taller</small></span>
+        <div class="tabs" id="tabs" role="navigation" aria-label="Secciones del panel"></div>
+      </div>
+      <div id="app"></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="confianza">
+  <div class="wrap">
+    <div class="eyebrow">Confianza</div>
+    <h2>Por qué confiar en Mekachi</h2>
+    <p class="lead">La confianza no se promete: se construye con reglas claras para talleres, repuestos y precios.</p>
+    <div class="grid g3">
+      <div class="card"><h3>Talleres visitados</h3><p>Ningún taller entra a la red sin una visita y un período de prueba. Si baja su calificación, sale.</p></div>
+      <div class="card"><h3>Repuestos con origen claro</h3><p>Solo de distribuidores formales, con factura, y con la pieza marcada como original, alterna o genérica.</p></div>
+      <div class="card"><h3>Todo queda registrado</h3><p>Precio acordado, piezas usadas y fecha. Ese registro es el que respalda la garantía.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="cobertura">
+  <div class="wrap">
+    <div class="eyebrow">Cobertura</div>
+    <h2>Empezamos en Quito, zona por zona</h2>
+    <p class="lead">Abrimos por zonas para poder cumplir la entrega rápida. Después Guayaquil y el resto del país.</p>
+    <div class="zones">
+      <div><b>Norte</b><span>Zona de arranque con los primeros talleres.</span></div>
+      <div><b>Centro norte</b><span>Se suma cuando las entregas del norte sean estables.</span></div>
+      <div><b>Sur</b><span>Con punto de despacho propio en la zona.</span></div>
+      <div><b>Valles y periferia</b><span>Entregas programadas dos veces al día.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="preguntas">
+  <div class="wrap" style="max-width:780px">
+    <div class="eyebrow">Preguntas frecuentes</div>
+    <h2 style="margin-bottom:22px">Lo que suelen preguntar los talleres</h2>
+    <details><summary>¿Cuánto cuesta usar Mekachi para un taller?</summary><p>Entrar a la red y recibir clientes no tiene costo. Mekachi gana con la venta de los repuestos que el taller pide.</p></details>
+    <details><summary>¿Qué pasa si el repuesto no es el correcto?</summary><p>Se devuelve y se cambia. Por eso pedimos marca, modelo y año en las piezas que no están en la lista.</p></details>
+    <details><summary>¿Cómo se paga?</summary><p>Por transferencia, Deuna o efectivo contra entrega. Los talleres con historial de pago pueden acceder a plazo.</p></details>
+    <details><summary>¿Ya puedo hacer pedidos reales?</summary><p>Todavía no. Esta página es una demostración; los pedidos reales empiezan con los talleres piloto del norte de Quito.</p></details>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    Mekachi · Plan de crecimiento. Las cifras de margen, costos y metas son supuestos de trabajo y deben ajustarse con datos reales del piloto.
+    <a class="logo" href="#top"><svg><use href="#mk"/></svg>Mekachi</a>
+    <span>Sitio de demostración · Quito, Ecuador · <a href="plan/">Plan de crecimiento</a></span>
   </div>
 </footer>
 
-<script>
-(function () {
-  var $ = function (id) { return document.getElementById(id); };
-  var usd = function (n) { return (n < 0 ? "−$" : "$") + Math.abs(Math.round(n)).toLocaleString("es-EC"); };
-  var ids = ["t", "p", "k", "m", "c", "f"];
-
-  function calc() {
-    var t = +$("t").value, p = +$("p").value, k = +$("k").value,
-        m = +$("m").value / 100, c = +$("c").value, f = +$("f").value;
-    $("ot").textContent = t;
-    $("op").textContent = p;
-    $("ok").textContent = "$" + k;
-    $("om").textContent = Math.round(m * 100) + " %";
-    $("oc").textContent = "$" + c.toFixed(2).replace(".", ",");
-    $("of").textContent = usd(f);
-
-    var pedidos = t * p * 4.33;
-    var ventas = pedidos * k, margen = ventas * m, log = pedidos * c;
-    var res = margen - log - f;
-    var porTaller = p * 4.33 * (k * m - c);
-
-    $("r-ped").textContent = Math.round(pedidos).toLocaleString("es-EC");
-    $("r-ven").textContent = usd(ventas);
-    $("r-mar").textContent = usd(margen);
-    $("r-log").textContent = usd(-log);
-    $("r-fij").textContent = usd(-f);
-    $("r-res").textContent = usd(res);
-    $("r-res").className = res >= 0 ? "pos" : "neg";
-    $("r-eq").textContent = porTaller > 0 ? Math.ceil(f / porTaller) : "Nunca: cada pedido pierde";
-    $("r-eq").className = porTaller > 0 ? "" : "neg";
-  }
-  ids.forEach(function (id) { $(id).addEventListener("input", calc); });
-  calc();
-
-  var boxes = [].slice.call(document.querySelectorAll("#check input"));
-  var KEY = "mekachi-pasos-quito";
-  var saved = [];
-  try { saved = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
-  function prog() {
-    var n = boxes.filter(function (b) { return b.checked; }).length;
-    $("prog").textContent = n + " de " + boxes.length + " pasos completados";
-  }
-  boxes.forEach(function (b, i) {
-    b.checked = !!saved[i];
-    b.addEventListener("change", function () {
-      try { localStorage.setItem(KEY, JSON.stringify(boxes.map(function (x) { return x.checked; }))); } catch (e) {}
-      prog();
-    });
-  });
-  prog();
-})();
-</script>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="catalogo.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
