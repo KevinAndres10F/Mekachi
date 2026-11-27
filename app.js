@@ -195,6 +195,7 @@
     var need = guard(v);
     if (need === "taller" && state.user) { v = "perfil"; need = null; toast("Completa los datos de tu taller para continuar."); }
     if (need) { state.acc = { rol: need, tab: state.user ? "login" : (need === "taller" ? "registro" : "login"), after: v, msg: "" }; v = "acceso"; }
+    if (v === "cuenta" && !state.user && state.view !== "cuenta") state.acc = { rol: "conductor", tab: "registro", after: MODES[state.mode].tabs[0][0], msg: "" };
     state.view = v; render(); window.scrollTo(0, 0);
     var h = "#/" + v;
     if (location.hash !== h) { if (replace) history.replaceState(null, "", h); else history.pushState(null, "", h); }
@@ -247,7 +248,7 @@
       (a.rol === "conductor" ? '<button class="back" data-go="c-inicio">Seguir sin cuenta</button>' : "");
   }
   function viewCuenta() {
-    if (!state.user) { state.acc = { rol: "conductor", tab: "login", after: "c-inicio", msg: "" }; return viewAcceso() + acercaHtml(); }
+    if (!state.user) return viewAcceso() + acercaHtml();
     var p = state.perfil || {};
     return "<h1>Mi cuenta</h1>" +
       '<div class="card"><h2>' + esc(p.nombre || "Sin nombre") + '</h2><p class="muted small">' + esc(state.user.email || "") + " · " + esc(p.rol === "taller" ? "Taller" : p.rol === "despacho" ? "Despacho Mekachi" : "Conductor") + "</p>" +
