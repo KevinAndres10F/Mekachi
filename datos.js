@@ -4,6 +4,10 @@ window.MEKACHI_CONFIG = {
   // Número de WhatsApp de Mekachi en formato internacional sin "+", p. ej. "5939XXXXXXXX".
   // Si queda vacío, WhatsApp abre el pedido y el taller elige a quién enviarlo.
   whatsapp: "",
+  // Conexión a Supabase. La clave publicable es segura en el navegador: los datos los protege la seguridad por filas.
+  supabaseUrl: "https://hxhpgpvfjgurugnmdrbu.supabase.co",
+  supabaseKey: "sb_publishable_Xm-B7xgUS6oTJ-bxU1Fuhg_DcZH7UUW",
+  tipos: { taller: "Llevo el auto al taller", recogida: "Recogida y entrega del auto", domicilio: "Mecánico a domicilio", grua: "Necesito grúa" },
   iva: 0.15,
   zonas: ["Norte", "Centro norte", "Sur", "Valles y periferia"],
   pagos: ["Transferencia", "Deuna", "Efectivo contra entrega"]
@@ -124,6 +128,15 @@ window.MEKACHI_SINTOMAS = [
     claves: ["volante", "duro", "dirección", "direccion", "pesado", "girar"],
     causas: ["Bajo nivel de aceite de dirección", "Banda de accesorios floja", "Bomba de dirección defectuosa"],
     servicio: "Revisión de la dirección hidráulica", repuestos: ["Aceite ATF", "Banda de accesorios"], buscar: "ATF" },
+
+  { id: "su4", cat: "Suspensión y dirección", esp: "Suspensión", urgencia: "media", titulo: "Suena tac-tac al girar el volante o en curvas",
+    claves: ["tac", "tac-tac", "clac", "girar", "giro", "curva", "volante", "suena", "homocinética", "homocinetica", "punta", "eje", "traquetea"],
+    causas: ["Junta homocinética gastada", "Guardapolvo roto que dejó escapar la grasa"],
+    servicio: "Revisión y cambio de junta homocinética", repuestos: ["Junta homocinética", "Guardapolvo"], buscar: "" },
+  { id: "su5", cat: "Suspensión y dirección", esp: "Suspensión", urgencia: "media", titulo: "Zumbido que aumenta con la velocidad",
+    claves: ["zumbido", "zumba", "ronroneo", "ronca", "velocidad", "rueda", "rodamiento", "rulimán", "ruliman", "llanta"],
+    causas: ["Rodamiento de rueda gastado", "Llantas con desgaste irregular"],
+    servicio: "Revisión de rodamientos y llantas", repuestos: ["Rodamiento de rueda"], buscar: "" },
 
   { id: "tr1", cat: "Caja y embrague", esp: "Transmisión", urgencia: "media", titulo: "El embrague patina o los cambios entran duros",
     claves: ["embrague", "patina", "cambios", "marcha", "caja", "duro", "raspa", "clutch"],

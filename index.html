@@ -34,15 +34,15 @@
     <div class="seg modes" role="group" aria-label="Perfil"></div>
     <nav class="sidenav" id="sidenav" aria-label="Secciones"></nav>
     <div class="side-foot">
-      <button data-go="acerca" id="side-acerca"></button>
-      <small>Versión demo · Quito</small>
+      <button data-go="cuenta" id="side-cuenta"></button>
+      <small>Versión piloto · Quito</small>
     </div>
   </aside>
   <div class="main">
     <header class="topbar">
       <a class="logo" href="#/" data-home="1" aria-label="Mekachi"><svg><use href="#mk"/></svg><span>Mekachi</span></a>
       <div class="seg modes" role="group" aria-label="Perfil"></div>
-      <button class="infobtn" data-go="acerca" aria-label="Acerca de la demo" id="top-acerca"></button>
+      <button class="infobtn" data-go="cuenta" aria-label="Mi cuenta" id="top-cuenta"></button>
     </header>
     <main id="app"></main>
   </div>
@@ -51,6 +51,7 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/supabase/supabase.js"></script>
 <script src="datos.js"></script>
 <script src="app.js"></script>
 </body>
