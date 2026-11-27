@@ -222,3 +222,11 @@ h1 .status { vertical-align: middle; font-family: var(--font); }
 .tl small { display: block; color: var(--muted); font-size: .76rem; font-weight: 600; }
 .sint small { line-height: 1.35; display: block; margin-top: 2px; }
 @media (max-width: 420px) { .tabbar button { font-size: .62rem; } }
+
+/* ---------- Compras y conteo ---------- */
+.ocrow { display: grid; grid-template-columns: 1fr 76px 92px auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.ocrow.two { grid-template-columns: 1fr 92px; }
+.ocrow small { display: block; }
+.ocrow input { padding: 8px 8px; }
+.ocrow .btn.sm { padding: 7px 10px; }
+@media (max-width: 480px) { .ocrow { grid-template-columns: 1fr 64px 78px auto; } .ocrow.two { grid-template-columns: 1fr 78px; } }

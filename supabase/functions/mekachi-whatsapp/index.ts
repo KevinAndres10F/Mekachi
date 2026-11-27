@@ -157,17 +157,17 @@ function herramientas(ctx: Contexto, cfg: Cfg) {
     }),
     betaTool({
       name: "buscar_repuestos",
-      description: "Busca repuestos en el catálogo de Mekachi por nombre o vehículo. Devuelve código, nombre, compatibilidad y precio sin IVA. Úsala antes de mencionar cualquier repuesto o precio.",
+      description: "Busca repuestos en el catálogo de Mekachi por nombre o vehículo. Devuelve código, nombre, compatibilidad, precio sin IVA y si está en bodega o es bajo pedido. Úsala antes de mencionar cualquier repuesto o precio, y di la disponibilidad.",
       inputSchema: { type: "object", properties: { texto: { type: "string", description: "Una o dos palabras clave, por ejemplo: pastillas Hilux, filtro aceite Tiggo, batería." } }, required: ["texto"], additionalProperties: false },
       run: async (i: { texto: string }) => {
         const palabras = String(i.texto).toLowerCase().split(/\s+/).map((w) => w.replace(/[%,()]/g, "")).filter((w) => w.length > 2).slice(0, 3);
-        let q = db.from("mekachi_productos").select("codigo,nombre,compatibilidad,precio").eq("activo", true);
+        let q = db.from("mekachi_productos").select("codigo,nombre,compatibilidad,precio,disponible").eq("activo", true);
         if (!cfg.demo) q = q.eq("es_demo", false);
         for (const w of palabras) q = q.or(`nombre.ilike.%${w}%,compatibilidad.ilike.%${w}%,categoria.ilike.%${w}%`);
         const { data, error } = await q.limit(8);
         if (error) return "No se pudo consultar el catálogo en este momento.";
         if (!data.length) return "No está en el catálogo. Un taller registrado puede pedirlo igual como pieza por cotizar.";
-        return JSON.stringify({ aviso: cfg.demo ? "Precios de DEMOSTRACIÓN, sin IVA: dilo al mencionarlos." : "Precios sin IVA.", repuestos: data });
+        return JSON.stringify({ aviso: cfg.demo ? "Precios de DEMOSTRACIÓN, sin IVA: dilo al mencionarlos." : "Precios sin IVA.", repuestos: data.map((r) => ({ codigo: r.codigo, nombre: r.nombre, compatibilidad: r.compatibilidad, precio: r.precio, disponibilidad: r.disponible ? "en bodega" : "bajo pedido: hay que traerlo del distribuidor" })) });
       },
     }),
     betaTool({
@@ -417,7 +417,7 @@ async function procesar(cfg: Cfg, msg: any, nombre: string): Promise<string | nu
 
 // Tareas programadas: retomar conversaciones sin atender, avisar citas respondidas y pedir calificación.
 async function tareas(cfg: Cfg) {
-  const r = { retomadas: 0, citas_avisadas: 0, seguimientos: 0 };
+  const r = { retomadas: 0, citas_avisadas: 0, gruas_avisadas: 0, seguimientos: 0 };
   const limite = new Date(Date.now() - cfg.espera * 60000).toISOString();
   const { data: esperando } = await db.from("mekachi_wa_conversaciones").select("id,telefono,humano_desde").eq("requiere_humano", true).lt("humano_desde", limite);
   for (const c of esperando ?? []) {
@@ -440,6 +440,17 @@ async function tareas(cfg: Cfg) {
     if (c.conversacion_id) await db.from("mekachi_wa_mensajes").insert({ conversacion_id: c.conversacion_id, rol: "assistant", texto: txt });
     if (c.telefono) await enviar(cfg, c.telefono, txt);
     r.citas_avisadas++;
+  }
+  // Grúas pedidas desde la app: el equipo se entera por WhatsApp.
+  const { data: gruas } = await db.from("mekachi_gruas_solicitudes").select("id,num,nombre,telefono,ubicacion,lat,lng,tipo_vehiculo,destino,es_demo,proveedor:mekachi_gruas_proveedores(nombre,whatsapp)").eq("aviso_equipo", false);
+  for (const g of gruas ?? []) {
+    // deno-lint-ignore no-explicit-any
+    const pr = g.proveedor as any;
+    const resumen = `Grúa ${g.num} · ${g.tipo_vehiculo}${g.es_demo ? " (demostración)" : ""}\nRecoger en: ${g.ubicacion}${g.lat != null ? `\nMapa: https://maps.google.com/?q=${g.lat},${g.lng}` : ""}\nLlevar a: ${g.destino || "por definir"}\nContacto: ${g.nombre} · ${g.telefono}`;
+    await db.from("mekachi_gruas_solicitudes").update({ aviso_equipo: true }).eq("id", g.id);
+    if (pr?.whatsapp) await enviar(cfg, pr.whatsapp, "Solicitud de grúa de Mekachi\n" + resumen);
+    await avisarEquipo(cfg, "Nueva solicitud de grúa desde la app" + (pr ? ` (${pr.nombre})` : " SIN PROVEEDOR") + "\n" + resumen);
+    r.gruas_avisadas++;
   }
   // Seguimiento a los 2 o 3 días de la cita. Va fuera de la ventana de 24 horas, así que exige plantilla aprobada.
   const plantilla = env("WA_PLANTILLA_SEGUIMIENTO");

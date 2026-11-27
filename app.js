@@ -28,8 +28,8 @@
     taller: { label: "Taller", tabs: [["t-inicio", "Inicio", "home"], ["trabajos", "Trabajos", "wrench"], ["catalogo", "Repuestos", "box"], ["pedidos", "Pedidos", "truck"], ["perfil", "Mi taller", "shop"]] },
     despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-inventario", "Inventario", "box"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"], ["d-red", "Red", "shop"]] }
   };
-  var PARENT = { solicitar: "talleres", carrito: "catalogo" };
-  var VIEWMODE = { solicitar: "conductor", carrito: "taller" };
+  var PARENT = { solicitar: "talleres", carrito: "catalogo", grua: "c-inicio" };
+  var VIEWMODE = { solicitar: "conductor", carrito: "taller", grua: "conductor" };
   Object.keys(MODES).forEach(function (m) { MODES[m].tabs.forEach(function (t) { VIEWMODE[t[0]] = m; }); });
   var ESTADOS = ["Registrado", "Confirmado", "En camino", "Entregado"];
   var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1, "d-clientes": 1 };
@@ -41,7 +41,7 @@
     dq: "", dcat: "Todos", dsel: null, fesp: "Todas", fzona: "Todas", pos: null, tsel: [], vsel: null, draft: null,
     garaje: store.get("garaje", []), solicitudes: [], historial: [],
     q: "", cat: "Todas", sug: null, cart: store.get("cart", []), trabajos: [], pedidos: [],
-    dPedidos: [], dSolicitudes: [], dTalleres: [], dConvs: [], dMsgs: [], dGruas: [], dCitas: [], dsub: "conv", dconv: null, tCitas: [], dClientes: [], dcli: null, dCliDet: null, cfil: "todos", cq: "", dInv: [], iprod: null, iMovs: [], ifil: "todos", iq: "", inuevo: false, rsub: "talleres"
+    dPedidos: [], dSolicitudes: [], dTalleres: [], dConvs: [], dMsgs: [], dGruas: [], dCitas: [], dsub: "conv", dconv: null, tCitas: [], dClientes: [], dcli: null, dCliDet: null, cfil: "todos", cq: "", dInv: [], iprod: null, iMovs: [], ifil: "todos", iq: "", inuevo: false, rsub: "talleres", isub: "stock", dCompras: [], oc: null, ccat: null, misGruas: [], gruaOk: null
   };
 
   var $ = function (s) { return document.querySelector(s); };
@@ -135,6 +135,8 @@
       if (!r[0].error) state.garaje = r[0].data;
       if (!r[1].error) state.solicitudes = r[1].data;
       if (!r[2].error) state.historial = r[2].data;
+      var mg = await sb.from("mekachi_gruas_solicitudes").select("*, proveedor:mekachi_gruas_proveedores(nombre)").eq("conductor_id", u.id).order("created_at", { ascending: false });
+      if (!mg.error) state.misGruas = mg.data;
     } else if (state.mode === "taller" && state.miTaller) {
       r = await Promise.all([
         sb.from("mekachi_cotizaciones").select("*, solicitud:mekachi_solicitudes(*)").eq("taller_id", state.miTaller.id).order("created_at", { ascending: false }),
@@ -164,6 +166,8 @@
       if (state.dconv) await loadMsgs();
       var iv = await sb.from("mekachi_productos").select("*, inv:mekachi_inventario(*)").order("categoria").order("nombre");
       if (!iv.error) state.dInv = iv.data.map(function (x) { var i = x.inv || {}; return { id: x.id, codigo: x.codigo, cat: x.categoria, nombre: x.nombre, compat: x.compatibilidad, precio: +x.precio, activo: x.activo, demo: x.es_demo, stock: i.stock || 0, minimo: i.stock_minimo || 0, costo: +(i.costo || 0), proveedor: i.proveedor || "", ubicacion: i.ubicacion || "" }; });
+      var oc = await sb.from("mekachi_compras").select("*, items:mekachi_compra_items(cantidad,costo_unit,producto:mekachi_productos(nombre,compatibilidad))").order("created_at", { ascending: false }).limit(40);
+      if (!oc.error) state.dCompras = oc.data;
       var cl = await sb.rpc("mekachi_clientes");
       if (!cl.error) state.dClientes = cl.data || [];
     }
@@ -321,7 +325,7 @@
       '<button class="btn amber" data-go="diag">Empezar diagnóstico</button></div>' +
       avisos.map(function (a) { return '<div class="notice">' + a + "</div>"; }).join("") +
       '<div class="quick">' + q("talleres", "pin", "Talleres", "Mapa de talleres cerca de ti") + q("solicitudes", "list", "Solicitudes", "Precios y estado de tus servicios") +
-      q("garaje", "car", "Mi garaje", "Recordatorios e historial") + "</div>" +
+      q("garaje", "car", "Mi garaje", "Recordatorios e historial") + q("grua", "truck", "Pedir grúa", "Si el auto no puede moverse") + "</div>" +
       (state.user ? "" : '<div class="card"><h2>Guarda tu historial</h2><p class="muted small">Con una cuenta gratuita conservas tus autos, tus solicitudes y cada servicio realizado.</p><button class="btn sm primary" data-go="cuenta">Crear cuenta o entrar</button></div>');
   }
 
@@ -367,7 +371,7 @@
       (s.nota ? '<div class="notice">' + esc(s.nota) + "</div>" : "") +
       '<div class="card"><h2>Causas más probables</h2>' + li(s.causas) + "</div>" +
       '<div class="card"><h2>Servicio recomendado</h2><p>' + esc(s.servicio) + "</p><h2>Repuestos que suele requerir</h2>" + li(s.repuestos) + "</div>" +
-      (s.urgencia === "alta" ? '<button class="btn primary block" data-buscartaller="' + esc(s.esp) + '" data-tipo="grua">Pedir grúa o mecánico a domicilio</button><button class="btn block" style="margin-top:8px" data-buscartaller="' + esc(s.esp) + '">Ver talleres de ' + esc(s.esp.toLowerCase()) + "</button>"
+      (s.urgencia === "alta" ? '<button class="btn primary block" data-go="grua">Pedir una grúa</button><button class="btn block" style="margin-top:8px" data-buscartaller="' + esc(s.esp) + '">Ver talleres de ' + esc(s.esp.toLowerCase()) + "</button>"
         : '<button class="btn primary block" data-buscartaller="' + esc(s.esp) + '">Ver talleres de ' + esc(s.esp.toLowerCase()) + "</button>") +
       '<p class="muted small" style="margin-top:12px">Orientación inicial basada en síntomas comunes. No reemplaza la revisión de un mecánico.</p>';
   }
@@ -457,6 +461,28 @@
       (state.user ? "" : '<p class="muted small" style="margin-top:8px">Para enviarla te pediremos crear una cuenta; así recibes los precios y guardas el historial.</p>') + "</form>";
   }
   function viewSolicitudes() {
+    var h = viewSolicitudesBase();
+    if (!state.misGruas.length) return h;
+    return h.replace("<h1>Mis solicitudes</h1>", '<h1>Mis solicitudes</h1><div class="section-title">Grúas</div>' + state.misGruas.map(function (g) {
+      return '<div class="card"><div class="head"><div><h2>' + esc(g.num) + " · " + esc(g.tipo_vehiculo) + '</h2><div class="muted small">' + fecha(g.created_at) + (g.es_demo ? " · demostración" : "") + "</div></div>" + chip(g.estado) + "</div>" +
+        '<p class="small"><b>Recoger en:</b> ' + esc(g.ubicacion) + "<br><b>Llevar a:</b> " + esc(g.destino || "por definir") + "<br><b>Proveedor:</b> " + esc(g.proveedor ? g.proveedor.nombre : "por asignar") + (g.estimado_min ? " · " + g.estimado_min + " min · " + usd(g.estimado_precio) : "") + "</p></div>";
+    }).join("") + '<div class="section-title">Servicios</div>');
+  }
+  // ---------- Grúa desde la app
+  function viewGrua() {
+    var g = state.gruaOk, p = state.perfil || {}, t = byId(state.talleres, state.tsel[0]);
+    if (g) return "<h1>Grúa solicitada</h1><div class='urg baja'><b>" + esc(g.num) + " · " + esc(g.estado) + "</b><span>" + (g.proveedor ? esc(g.proveedor) + " · llegada estimada " + g.minutos + " min · " + usd(g.precio) + " aprox." : "El equipo de Mekachi asignará un proveedor y te llamará.") + "</span></div>" +
+      (g.demo ? '<div class="notice"><b>Mekachi está en pruebas:</b> esta solicitud es de demostración y no llegará una grúa real. Si es una emergencia, llama a tu seguro o al 911.</div>' : '<div class="notice">Te contactaremos al teléfono que dejaste para confirmar la llegada.</div>') +
+      '<p class="muted small">Quédate fuera del auto, en un lugar seguro y con las luces de emergencia encendidas.</p><div class="actions"><button class="btn primary" data-gruafin="1">Entendido</button>' + (state.user ? '<button class="btn" data-go="solicitudes">Ver mis solicitudes</button>' : "") + "</div>";
+    return '<button class="back" data-go="c-inicio">← Volver</button><h1>Pedir una grúa</h1><p class="muted small">Si estás en peligro en la vía, llama primero al 911.</p><form class="card" data-form="grua">' +
+      field("g-ubi", "¿Dónde está el auto?", 'required minlength="5" placeholder="Calle, número y una referencia"', "") +
+      '<div class="field"><div class="actions"><button type="button" class="btn sm" data-geo="1">Adjuntar mi ubicación actual</button><span class="muted small" id="geo-txt">Opcional, ayuda a la grúa a encontrarte</span></div><input type="hidden" id="t-lat"><input type="hidden" id="t-lng"></div>' +
+      '<div class="row"><div class="field"><label for="g-zona">Zona de Quito</label><select id="g-zona">' + opts(CFG.zonas) + '</select></div><div class="field"><label for="g-tipo">Tipo de vehículo</label><select id="g-tipo">' + opts(["Auto", "SUV", "Camioneta", "Moto"]) + "</select></div></div>" +
+      field("g-dest", "¿A dónde lo llevamos?", 'placeholder="Un taller o una dirección"', t ? t.nombre : "") +
+      '<div class="row">' + field("g-nombre", "Tu nombre", "required", p.nombre) + field("g-tel", "Teléfono de contacto", TEL + " required", p.telefono) + "</div>" +
+      '<button class="btn primary block">Pedir grúa</button></form>';
+  }
+  function viewSolicitudesBase() {
     if (!state.user) return "<h1>Mis solicitudes</h1><div class='empty'>Inicia sesión para ver tus solicitudes y los precios de los talleres.<br><br><button class='btn primary' data-go='cuenta'>Crear cuenta o entrar</button></div>";
     if (!state.solicitudes.length) return "<h1>Mis solicitudes</h1><div class='empty'>" + (state.loading ? "Cargando…" : "Aún no has pedido ningún servicio.<br><br><button class='btn primary' data-go='diag'>Empezar con el diagnóstico</button>") + "</div>";
     return "<h1>Mis solicitudes</h1>" + state.solicitudes.map(function (o) {
@@ -661,14 +687,15 @@
     if (!state.dPedidos.length) return "<h1>Pedidos de talleres</h1><div class='empty'>" + (state.loading ? "Cargando…" : "Todavía no hay pedidos.") + "</div>";
     return "<h1>Pedidos de talleres</h1><p class='muted small'>Cotiza las piezas fuera de lista y avanza el estado de cada pedido.</p>" +
       state.dPedidos.map(function (o) {
-        var i = ESTADOS.indexOf(o.estado), sig = ESTADOS[i + 1], t = o.taller || {}, bloq = pendientes(o) > 0 && i === 0;
+        var i = ESTADOS.indexOf(o.estado), sig = o.estado === "Cancelado" ? null : ESTADOS[i + 1], t = o.taller || {}, bloq = pendientes(o) > 0 && i === 0;
         var cot = (o.items || []).filter(function (l) { return l.precio_unit == null; }).map(function (l) {
           return '<form class="inline" data-form="cotizar-linea" data-id="' + l.id + '" style="margin-bottom:8px"><span class="small" style="flex:1">' + esc(l.nombre) + " · " + esc(l.detalle) +
             '</span><input name="precio" type="number" min="0.01" step="0.01" required placeholder="Precio $" aria-label="Precio unitario"><button class="btn sm">Cotizar</button></form>';
         }).join("");
         return '<div class="card"><div class="head"><div><h2>' + esc(o.num) + " · " + esc(t.nombre) + '</h2><div class="muted small">' + fecha(o.created_at) + " · " + esc(o.direccion) + " (" + esc(o.zona) + ") · " + esc(o.pago) + (t.telefono ? " · " + esc(t.telefono) : "") + "</div></div>" + chip(o.estado) + "</div>" +
-          track(o) + orderLines(o) + cot + (i < 2 ? faltantes(o) : "") + orderTotal(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
-          (sig ? '<div class="actions"><button class="btn sm primary" data-avanzar="' + o.id + '"' + (bloq ? " disabled" : "") + ">Marcar como " + sig.toLowerCase() + "</button>" + (bloq ? '<span class="muted small">Cotiza primero las piezas pendientes.</span>' : "") + "</div>" : "") + "</div>";
+          track(o) + orderLines(o) + cot + (i >= 0 && i < 2 ? faltantes(o) : "") + orderTotal(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
+          (sig ? '<div class="actions"><button class="btn sm primary" data-avanzar="' + o.id + '"' + (bloq ? " disabled" : "") + ">Marcar como " + sig.toLowerCase() + "</button>" + (bloq ? '<span class="muted small">Cotiza primero las piezas pendientes.</span>' : "") + "</div>" : "") +
+          (o.estado !== "Cancelado" ? '<div class="actions" style="margin-top:8px"><button class="btn sm danger" data-cancelarped="' + o.id + '" data-sale="' + (i >= 2 ? "1" : "") + '">' + (i >= 2 ? "Cancelar y devolver a bodega" : "Cancelar pedido") + "</button></div>" : "") + "</div>";
       }).join("");
   }
   function viewDServicios() {
@@ -731,14 +758,20 @@
   function faltantes(o) {
     var f = (o.items || []).filter(function (l) { return l.producto_id; }).map(function (l) { var x = byId(state.dInv, l.producto_id); return { l: l, falta: Math.max(l.cantidad - (x ? x.stock : 0), 0) }; }).filter(function (y) { return y.falta > 0; });
     if (!(o.items || []).some(function (l) { return l.producto_id; })) return "";
-    return f.length ? '<div class="notice"><b>Falta en bodega:</b> ' + f.map(function (y) { return y.falta + " × " + esc(y.l.nombre); }).join(", ") + ". Al despachar se registra como compra contra pedido.</div>" : '<p class="muted small">Todo lo de catálogo está en bodega.</p>';
+    return f.length ? '<div class="notice"><b>Falta en bodega.</b> Registra la compra con su costo real antes de despachar; si no, entra al costo promedio.' + f.map(function (y) {
+      return '<form class="inline" data-form="compra-pedido" data-pid="' + y.l.producto_id + '" data-num="' + esc(o.num) + '" style="margin-top:8px;flex-wrap:wrap"><span class="small" style="flex:1 1 140px">' + esc(y.l.nombre) + '</span><input name="cant" type="number" min="1" step="1" required value="' + y.falta + '" aria-label="Cantidad" style="max-width:76px"><input name="costo" type="number" min="0.01" step="0.01" required placeholder="Costo $" aria-label="Costo unitario" style="max-width:104px"><button class="btn sm">Registrar compra</button></form>';
+    }).join("") + "</div>" : '<p class="muted small">Todo lo de catálogo está en bodega.</p>';
   }
   function viewDInventario() {
     var all = state.dInv, x = state.iprod ? byId(all, state.iprod) : null;
     if (x) return viewProducto(x);
+    var pedidas = count(state.dCompras, function (c) { return c.estado === "Pedida"; });
+    var sub = '<div class="chips">' + [["stock", "Existencias"], ["compras", "Compras" + (pedidas ? " · " + pedidas : "")], ["conteo", "Conteo físico"]].map(function (c) { return '<button data-isub="' + c[0] + '" aria-pressed="' + (state.isub === c[0]) + '">' + c[1] + "</button>"; }).join("") + "</div>";
+    if (state.isub === "compras") return "<h1>Inventario</h1>" + sub + comprasHtml();
+    if (state.isub === "conteo") return "<h1>Inventario</h1>" + sub + conteoHtml();
     var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; };
     var valor = all.reduce(function (n, y) { return n + y.stock * y.costo; }, 0), venta = all.reduce(function (n, y) { return n + y.stock * y.precio; }, 0);
-    return "<h1>Inventario</h1><p class='muted small'>Existencias en bodega. Al despachar un pedido, la mercadería sale sola del inventario.</p>" +
+    return "<h1>Inventario</h1>" + sub + "<p class='muted small'>Existencias en bodega. Al despachar un pedido, la mercadería sale sola del inventario.</p>" +
       '<div class="kpis">' + k(all.length, "Repuestos") + k(all.reduce(function (n, y) { return n + y.stock; }, 0), "Unidades en bodega") + k(usd(valor), "Valor al costo") + k(usd(venta), "Valor a precio de venta") +
       k(count(all, IFILTROS[1][2]), "Bajo mínimo") + k(count(all, IFILTROS[2][2]), "Sin existencias") + "</div>" +
       '<input type="search" id="iq" placeholder="Buscar por nombre, vehículo o código" value="' + esc(state.iq) + '" aria-label="Buscar repuesto">' +
@@ -751,6 +784,45 @@
         '<div class="row">' + field("n-costo", "Costo de compra $", 'type="number" min="0" step="0.01" required', "") + field("n-precio", "Precio de venta $ (sin IVA)", 'type="number" min="0" step="0.01" required', "") + "</div>" +
         '<div class="row">' + field("n-stock", "Existencias iniciales", 'type="number" min="0" step="1" required', "0") + field("n-min", "Mínimo para alerta", 'type="number" min="0" step="1" required', "2") + "</div>" +
         '<button class="btn primary block">Crear repuesto</button></form>' : "");
+  }
+  // Órdenes de compra a proveedores
+  function syncOc() {
+    if (!state.oc || !$("#oc-prov")) return;
+    state.oc.proveedor = $("#oc-prov").value; state.oc.nota = $("#oc-nota").value;
+    state.oc.items.forEach(function (it) { var q = $('[data-ocq="' + it.id + '"]'), c = $('[data-occ="' + it.id + '"]'); if (q) it.cantidad = parseInt(q.value, 10) || 0; if (c) it.costo = +c.value || 0; });
+  }
+  function comprasHtml() {
+    var o = state.oc;
+    if (o) {
+      var tot = o.items.reduce(function (n, it) { return n + it.cantidad * it.costo; }, 0), libres = state.dInv.filter(function (x) { return !o.items.some(function (it) { return it.id === x.id; }); });
+      return '<form class="card" data-form="oc"><h2>Nueva orden de compra</h2><div class="row">' + field("oc-prov", "Proveedor", 'required placeholder="Nombre del distribuidor"', o.proveedor) + field("oc-nota", "Nota (opcional)", 'maxlength="160"', o.nota) + "</div>" +
+        (o.items.length ? o.items.map(function (it) {
+          var x = byId(state.dInv, it.id) || {};
+          return '<div class="ocrow"><span><b>' + esc(x.nombre) + '</b><small class="muted"> ' + esc(x.compat) + " · hay " + x.stock + ", mínimo " + x.minimo + '</small></span><input type="number" min="1" step="1" required data-ocq="' + it.id + '" value="' + it.cantidad + '" aria-label="Cantidad"><input type="number" min="0" step="0.01" required data-occ="' + it.id + '" value="' + it.costo + '" aria-label="Costo unitario"><button type="button" class="btn sm" data-ocdel="' + it.id + '" aria-label="Quitar">✕</button></div>';
+        }).join("") : '<p class="muted small">Agrega al menos un repuesto.</p>') +
+        '<div class="inline" style="margin:10px 0"><select id="oc-add" aria-label="Repuesto a agregar">' + libres.map(function (x) { return '<option value="' + x.id + '">' + esc(x.nombre + " · " + x.compat) + "</option>"; }).join("") + '</select><button type="button" class="btn sm" data-ocadd="1">Agregar</button></div>' +
+        '<p class="small"><b>Total estimado: ' + usd(tot) + '</b> · columnas: cantidad y costo unitario</p><div class="actions"><button class="btn primary">Crear orden de compra</button><button type="button" class="btn" data-occancel="1">Descartar</button></div></form>';
+    }
+    return "<p class='muted small'>Pide mercadería a tus proveedores. Al recibirla entra a bodega con su costo real.</p>" +
+      '<div class="actions" style="margin-bottom:14px"><button class="btn sm primary" data-ocsug="1">Sugerir compra con lo que está bajo mínimo</button><button class="btn sm" data-ocnew="1">Orden vacía</button></div>' +
+      (state.dCompras.length ? state.dCompras.map(function (c) {
+        return '<div class="card"><div class="head"><div><h2>' + esc(c.num) + " · " + esc(c.proveedor || "Sin proveedor") + '</h2><div class="muted small">' + fecha(c.created_at) + (c.nota ? " · " + esc(c.nota) : "") + "</div></div>" + chip(c.estado) + "</div>" +
+          '<ul class="lines">' + (c.items || []).map(function (it) { return "<li><span>" + it.cantidad + " × " + esc(it.producto ? it.producto.nombre : "") + ' <span class="muted">· ' + esc(it.producto ? it.producto.compatibilidad : "") + "</span></span><span>" + usd(it.cantidad * it.costo_unit) + "</span></li>"; }).join("") + "</ul>" +
+          '<p class="small"><b>Total: ' + usd(c.total) + "</b></p>" +
+          (c.estado === "Pedida" ? '<div class="actions"><button class="btn sm primary" data-recibir="' + c.id + '">Recibir en bodega</button><button class="btn sm" data-cancelaroc="' + c.id + '">Cancelar orden</button></div>' : "") + "</div>";
+      }).join("") : "<div class='empty'>Todavía no hay órdenes de compra.</div>");
+  }
+  statusCls.Pedida = "warn"; statusCls.Recibida = "ok";
+  // Conteo físico por categoría
+  function conteoHtml() {
+    var cats = state.dInv.map(function (x) { return x.cat; }).filter(function (c, i, a) { return a.indexOf(c) === i; });
+    if (cats.indexOf(state.ccat) < 0) state.ccat = cats[0];
+    var list = state.dInv.filter(function (x) { return x.cat === state.ccat; });
+    return "<p class='muted small'>Cuenta lo que hay en la percha y escribe la cantidad real. Solo se ajusta lo que sea distinto.</p>" +
+      '<div class="chips">' + cats.map(function (c) { return '<button data-ccat="' + esc(c) + '" aria-pressed="' + (state.ccat === c) + '">' + esc(c) + "</button>"; }).join("") + "</div>" +
+      '<form class="card" data-form="conteo">' + list.map(function (x) {
+        return '<div class="ocrow two"><span><b>' + esc(x.nombre) + '</b><small class="muted"> ' + esc(x.compat) + (x.ubicacion ? " · " + esc(x.ubicacion) : "") + " · sistema: " + x.stock + '</small></span><input type="number" min="0" step="1" required data-conteo="' + x.id + '" data-sis="' + x.stock + '" value="' + x.stock + '" aria-label="Unidades contadas"></div>';
+      }).join("") + field("ct-motivo", "Referencia del conteo (opcional)", 'maxlength="80" placeholder="Conteo mensual de noviembre"', "") + '<button class="btn primary block">Guardar conteo de ' + esc(state.ccat) + "</button></form>";
   }
   function viewProducto(x) {
     return '<button class="back" data-inv="">← Todo el inventario</button><h1>' + esc(x.nombre) + " " + chip(x.stock === 0 ? "Sin existencias" : x.stock <= x.minimo ? "Bajo mínimo" : "En bodega") + "</h1>" +
@@ -869,7 +941,7 @@
   // =====================================================================
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
-    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
+    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
   function render() {
     nav();
     if (map) { map.remove(); map = null; }
@@ -928,6 +1000,17 @@
     else if (d.terminar) await done(await call(sb.rpc("mekachi_terminar_solicitud", { p_solicitud: d.terminar })), "Trabajo terminado y registrado.");
     else if (d.rate) await done(await call(sb.rpc("mekachi_calificar", { p_solicitud: d.rate, p_rating: +d.n })), "Gracias por calificar.");
     else if (d.avanzar) await done(await call(sb.rpc("mekachi_despacho_avanzar", { p_pedido: d.avanzar })), "Pedido actualizado.");
+    else if (d.isub) { state.isub = d.isub; state.oc = null; render(); }
+    else if (d.ocsug) { state.oc = { proveedor: "", nota: "Reposición de mínimos", items: state.dInv.filter(function (x) { return x.activo && x.stock <= x.minimo; }).map(function (x) { return { id: x.id, cantidad: Math.max(x.minimo * 2 - x.stock, 1), costo: x.costo }; }) }; render(); }
+    else if (d.ocnew) { state.oc = { proveedor: "", nota: "", items: [] }; render(); }
+    else if (d.occancel) { state.oc = null; render(); }
+    else if (d.ocdel) { syncOc(); state.oc.items = state.oc.items.filter(function (it) { return it.id !== d.ocdel; }); render(); }
+    else if (d.ocadd) { syncOc(); var nx = byId(state.dInv, $("#oc-add").value); if (nx) state.oc.items.push({ id: nx.id, cantidad: Math.max(nx.minimo * 2 - nx.stock, 1), costo: nx.costo }); render(); }
+    else if (d.ccat) { state.ccat = d.ccat; render(); }
+    else if (d.recibir) { if (window.confirm("¿Recibir esta orden? La mercadería entra a bodega.")) await done(await call(sb.rpc("mekachi_compra_recibir", { p_compra: d.recibir })), "Mercadería recibida en bodega."); }
+    else if (d.cancelaroc) await done(await call(sb.rpc("mekachi_compra_cancelar", { p_compra: d.cancelaroc })), "Orden cancelada.");
+    else if (d.cancelarped) { if (window.confirm(d.sale ? "¿Cancelar el pedido? Sus repuestos vuelven a bodega." : "¿Cancelar este pedido?")) await done(await call(sb.rpc("mekachi_despacho_cancelar", { p_pedido: d.cancelarped })), d.sale ? "Pedido cancelado y mercadería devuelta a bodega." : "Pedido cancelado."); }
+    else if (d.gruafin) { state.gruaOk = null; go("c-inicio"); }
     else if ("inv" in d) await abrirProducto(d.inv);
     else if (d.ifil) { state.ifil = d.ifil; render(); }
     else if (d.rsub) { state.rsub = d.rsub; render(); }
@@ -1043,6 +1126,21 @@
         await done(await call(sb.rpc("mekachi_cotizar", { p_cotizacion: f.dataset.id, p_mano_obra: +f.elements.mano.value, p_repuestos: +f.elements.rep.value, p_nota: f.elements.nota.value.trim() })), "Precio enviado al cliente");
       } else if (kind === "cotizar-linea") {
         await done(await call(sb.rpc("mekachi_despacho_cotizar_item", { p_item: f.dataset.id, p_precio: +f.elements.precio.value })), "Pieza cotizada");
+      } else if (kind === "oc") {
+        syncOc();
+        if (!state.oc.items.length) return toast("Agrega al menos un repuesto.");
+        var idoc = await call(sb.rpc("mekachi_compra_crear", { p_proveedor: state.oc.proveedor, p_nota: state.oc.nota, p_items: state.oc.items.map(function (it) { return { producto_id: it.id, cantidad: it.cantidad, costo: it.costo }; }) }));
+        if (idoc) { state.oc = null; await reload(); toast("Orden de compra creada"); }
+      } else if (kind === "conteo") {
+        var difs = $$("[data-conteo]").filter(function (el) { return el.value !== el.dataset.sis; }).map(function (el) { return { producto_id: el.dataset.conteo, contado: parseInt(el.value, 10) }; });
+        if (!difs.length) return toast("No hay diferencias que ajustar.");
+        var nn = await call(sb.rpc("mekachi_inventario_conteo", { p_items: difs, p_motivo: v("ct-motivo") }));
+        if (nn !== null) { await loadMode(); await loadPublic(); render(); toast("Conteo guardado: " + difs.length + (difs.length === 1 ? " ajuste" : " ajustes")); }
+      } else if (kind === "compra-pedido") {
+        if (await call(sb.rpc("mekachi_inventario_mover", { p_producto: f.dataset.pid, p_tipo: "Entrada", p_cantidad: parseInt(f.elements.cant.value, 10), p_costo: +f.elements.costo.value, p_motivo: "Compra para el pedido " + f.dataset.num }))) { await loadMode(); await loadPublic(); render(); toast("Compra registrada en bodega"); }
+      } else if (kind === "grua") {
+        var gr = await call(sb.rpc("mekachi_pedir_grua", { p_nombre: v("g-nombre"), p_telefono: v("g-tel"), p_ubicacion: v("g-ubi"), p_zona: v("g-zona"), p_tipo: v("g-tipo"), p_destino: v("g-dest"), p_lat: v("t-lat") ? +v("t-lat") : null, p_lng: v("t-lng") ? +v("t-lng") : null }));
+        if (gr) { state.gruaOk = gr; await loadMode(); render(); window.scrollTo(0, 0); }
       } else if (kind === "inv-mover") {
         var mt = v("m-tipo");
         if (await call(sb.rpc("mekachi_inventario_mover", { p_producto: state.iprod, p_tipo: mt, p_cantidad: parseInt(v("m-cant"), 10), p_costo: mt === "Entrada" && v("m-costo") ? +v("m-costo") : null, p_motivo: v("m-motivo") }))) { await loadMode(); await loadPublic(); await abrirProducto(state.iprod); toast("Movimiento registrado"); }
