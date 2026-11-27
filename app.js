@@ -18,6 +18,7 @@
     wrench: "M14.5 6.5a4 4 0 0 0 5 5L11 20a2.1 2.1 0 0 1-3-3z M14.5 6.5L17 4a4 4 0 0 0-5.3 5.2", box: "M3 7.5l9-4.5 9 4.5v9L12 21l-9-4.5zM3 7.5l9 4.5 9-4.5M12 12v9",
     truck: "M2 6h11v10H2zM13 9h5l3 3v4h-8zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
     user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0", chart: "M5 20V11M11 20V4M17 20v-7M2 20h20",
+    chat: "M4 5h16v11H10l-5 4v-4H4z",
     shop: "M4 10v10h16V10M2 10l2-6h16l2 6a3 3 0 0 1-5 1 3 3 0 0 1-5 0 3 3 0 0 1-5 0 3 3 0 0 1-5-1zM9 20v-6h6v6"
   };
   var ico = function (n) { return '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICONS[n] + '"/></svg>'; };
@@ -25,13 +26,13 @@
   var MODES = {
     conductor: { label: "Conductor", tabs: [["c-inicio", "Inicio", "home"], ["diag", "Diagnóstico", "pulse"], ["talleres", "Talleres", "pin"], ["solicitudes", "Solicitudes", "list"], ["garaje", "Garaje", "car"]] },
     taller: { label: "Taller", tabs: [["t-inicio", "Inicio", "home"], ["trabajos", "Trabajos", "wrench"], ["catalogo", "Repuestos", "box"], ["pedidos", "Pedidos", "truck"], ["perfil", "Mi taller", "shop"]] },
-    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-servicios", "Servicios", "wrench"], ["d-talleres", "Talleres", "shop"]] }
+    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-servicios", "Servicios", "wrench"], ["d-talleres", "Talleres", "shop"], ["d-atencion", "Atención", "chat"]] }
   };
   var PARENT = { solicitar: "talleres", carrito: "catalogo" };
   var VIEWMODE = { solicitar: "conductor", carrito: "taller" };
   Object.keys(MODES).forEach(function (m) { MODES[m].tabs.forEach(function (t) { VIEWMODE[t[0]] = m; }); });
   var ESTADOS = ["Registrado", "Confirmado", "En camino", "Entregado"];
-  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1 };
+  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1 };
 
   var state = {
     mode: store.get("rol", null), view: null, loading: false,
@@ -40,7 +41,7 @@
     dq: "", dcat: "Todos", dsel: null, fesp: "Todas", fzona: "Todas", pos: null, tsel: [], vsel: null, draft: null,
     garaje: store.get("garaje", []), solicitudes: [], historial: [],
     q: "", cat: "Todas", sug: null, cart: store.get("cart", []), trabajos: [], pedidos: [],
-    dPedidos: [], dSolicitudes: [], dTalleres: []
+    dPedidos: [], dSolicitudes: [], dTalleres: [], dConvs: [], dMsgs: [], dGruas: [], dCitas: [], dsub: "conv", dconv: null, tCitas: []
   };
 
   var $ = function (s) { return document.querySelector(s); };
@@ -141,6 +142,8 @@
       ]);
       if (!r[0].error) state.trabajos = r[0].data.filter(function (c) { return c.solicitud; });
       if (!r[1].error) state.pedidos = r[1].data;
+      var ct = await sb.from("mekachi_citas").select("*").eq("taller_id", state.miTaller.id).order("created_at", { ascending: false });
+      if (!ct.error) state.tCitas = ct.data;
     } else if (state.mode === "despacho" && esDespacho()) {
       r = await Promise.all([
         sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(*), taller:mekachi_talleres(nombre,direccion,zona,telefono)").order("created_at", { ascending: false }),
@@ -150,8 +153,22 @@
       if (!r[0].error) state.dPedidos = r[0].data;
       if (!r[1].error) state.dSolicitudes = r[1].data;
       if (!r[2].error) state.dTalleres = r[2].data;
+      var a = await Promise.all([
+        sb.from("mekachi_wa_conversaciones").select("*").order("updated_at", { ascending: false }).limit(60),
+        sb.from("mekachi_gruas_solicitudes").select("*, proveedor:mekachi_gruas_proveedores(nombre)").order("created_at", { ascending: false }).limit(60),
+        sb.from("mekachi_citas").select("*, taller:mekachi_talleres(nombre)").order("created_at", { ascending: false }).limit(60)
+      ]);
+      if (!a[0].error) state.dConvs = a[0].data;
+      if (!a[1].error) state.dGruas = a[1].data;
+      if (!a[2].error) state.dCitas = a[2].data;
+      if (state.dconv) await loadMsgs();
     }
   }
+  async function loadMsgs() {
+    var m = await sb.from("mekachi_wa_mensajes").select("id,rol,autor,texto,created_at").eq("conversacion_id", state.dconv).order("id", { ascending: false }).limit(80);
+    if (!m.error) state.dMsgs = m.data.reverse();
+  }
+  var gruaActiva = function (g) { return g.estado !== "Completada" && g.estado !== "Cancelada"; };
   var esDespacho = function () { return !!(state.perfil && state.perfil.rol === "despacho"); };
   async function reload() { await loadMode(); render(); }
   // Tras una escritura: recarga y avisa.
@@ -165,6 +182,7 @@
     if (v === "trabajos") return count(state.trabajos, function (c) { return c.estado === "Pendiente" || c.estado === "Ajuste"; });
     if (v === "solicitudes") return count(state.solicitudes, function (o) { return o.estado === "Cotizada"; });
     if (v === "d-pedidos") return count(state.dPedidos, function (o) { return o.estado !== "Entregado"; });
+    if (v === "d-atencion") return count(state.dConvs, function (c) { return c.requiere_humano; }) + count(state.dGruas, gruaActiva) + count(state.dCitas, function (c) { return c.estado === "Pendiente"; });
     if (v === "d-talleres") return count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; });
     return 0;
   }
@@ -503,8 +521,12 @@
       '<div class="quick">' + q("trabajos", "wrench", "Trabajos", "Solicitudes de conductores") + q("catalogo", "box", "Pedir repuestos", "Catálogo y cotizaciones") + q("pedidos", "truck", "Mis pedidos", "Seguimiento de entregas") + "</div>";
   }
   function viewTrabajos() {
-    if (!state.trabajos.length) return "<h1>Trabajos</h1><div class='empty'>" + (state.loading ? "Cargando…" : "Aquí llegan las solicitudes de los conductores que elijan tu taller.") + "</div>";
-    return "<h1>Trabajos</h1><p class='muted small'>Responde con un precio cerrado. El cliente lo acepta antes de traer el auto.</p>" +
+    var citas = state.tCitas.length ? '<div class="section-title">Citas pedidas por WhatsApp</div>' + state.tCitas.map(function (c) {
+      return '<div class="card"><div class="head"><div><h2>' + esc(c.fecha) + " · " + esc(c.hora) + '</h2><div class="muted small">' + esc(c.num) + " · " + esc(c.nombre) + " · " + esc(c.vehiculo) + "</div></div>" + chip(c.estado) + "</div><p>" + esc(c.motivo) + "</p>" +
+        (c.estado === "Pendiente" ? '<div class="actions"><button class="btn sm primary" data-cita="' + c.id + '" data-acc="confirmar">Confirmar cita</button><button class="btn sm" data-cita="' + c.id + '" data-acc="rechazar">No puedo ese día</button></div>' : "") + "</div>";
+    }).join("") + '<div class="section-title">Solicitudes de precio</div>' : "";
+    if (!state.trabajos.length) return "<h1>Trabajos</h1>" + citas + "<div class='empty'>" + (state.loading ? "Cargando…" : "Aquí llegan las solicitudes de los conductores que elijan tu taller.") + "</div>";
+    return "<h1>Trabajos</h1><p class='muted small'>Responde con un precio cerrado. El cliente lo acepta antes de traer el auto.</p>" + citas +
       state.trabajos.map(function (c) {
         var o = c.solicitud, s = o.sintoma_id ? sintById[o.sintoma_id] : null, act = "", est = c.estado === "Pendiente" ? "Nuevo" : o.estado === "Terminada" && c.estado === "Aceptada" ? "Terminada" : c.estado;
         var form = '<form data-form="cotizar" data-id="' + c.id + '"><div class="row">' +
@@ -650,6 +672,37 @@
         "<p>" + esc(o.problema) + "</p>" + (o.precio_final ? '<p class="small"><b>' + usd(o.precio_final) + "</b>" + (o.rating ? " · " + estrellas(o.rating) : "") + "</p>" : "") + "</div>";
     }).join("");
   }
+  // ---------- Atención: conversaciones de WhatsApp, grúas y citas
+  var GRUA_SIG = { Solicitada: "Asignada", Asignada: "En camino", "En camino": "Completada" };
+  statusCls.Solicitada = "warn"; statusCls.Asignada = "info"; statusCls.Completada = "ok"; statusCls.Confirmada = "ok"; statusCls.Cancelada = ""; statusCls["Espera a una persona"] = "warn"; statusCls["Con el asistente"] = "ok"; statusCls.Demo = "";
+  function viewDAtencion() {
+    var pend = count(state.dConvs, function (c) { return c.requiere_humano; });
+    var subs = [["conv", "Conversaciones", pend], ["gruas", "Grúas", count(state.dGruas, gruaActiva)], ["citas", "Citas", count(state.dCitas, function (c) { return c.estado === "Pendiente"; })]];
+    var head = "<h1>Atención</h1><p class='muted small'>Lo que entra por WhatsApp: conversaciones, grúas y citas.</p>" +
+      '<div class="chips">' + subs.map(function (x) { return '<button data-dsub="' + x[0] + '" aria-pressed="' + (state.dsub === x[0]) + '">' + x[1] + (x[2] ? " · " + x[2] : "") + "</button>"; }).join("") + "</div>";
+    if (state.dsub === "gruas") return head + (state.dGruas.length ? state.dGruas.map(function (g) {
+      var sig = GRUA_SIG[g.estado];
+      return '<div class="card"><div class="head"><div><h2>' + esc(g.num) + " · " + esc(g.tipo_vehiculo) + '</h2><div class="muted small">' + fecha(g.created_at) + " · " + esc(g.nombre) + " · " + esc(g.telefono) + "</div></div><span>" + (g.es_demo ? chip("Demo") + " " : "") + chip(g.estado) + "</span></div>" +
+        '<p class="small"><b>Recoger en:</b> ' + esc(g.ubicacion) + (g.lat != null ? ' · <a target="_blank" rel="noopener" href="https://maps.google.com/?q=' + g.lat + "," + g.lng + '">Ver en el mapa</a>' : "") + "<br><b>Llevar a:</b> " + esc(g.destino) +
+        "<br><b>Proveedor:</b> " + esc(g.proveedor ? g.proveedor.nombre : "Sin asignar") + (g.estimado_min ? " · " + g.estimado_min + " min · " + usd(g.estimado_precio) : "") + "</p>" +
+        (sig ? '<div class="actions"><button class="btn sm primary" data-grua="' + g.id + '" data-e="' + sig + '">Marcar como ' + sig.toLowerCase() + '</button><button class="btn sm" data-grua="' + g.id + '" data-e="Cancelada">Cancelar</button></div>' : "") + "</div>";
+    }).join("") : "<div class='empty'>Todavía no hay solicitudes de grúa.</div>");
+    if (state.dsub === "citas") return head + (state.dCitas.length ? state.dCitas.map(function (c) {
+      return '<div class="card"><div class="head"><div><h2>' + esc(c.fecha) + " · " + esc(c.hora) + " · " + esc(c.taller ? c.taller.nombre : "") + '</h2><div class="muted small">' + esc(c.num) + " · " + esc(c.nombre) + " · " + esc(c.telefono) + " · " + esc(c.vehiculo) + "</div></div>" + chip(c.estado) + "</div><p>" + esc(c.motivo) + "</p>" +
+        (c.estado === "Pendiente" ? '<div class="actions"><button class="btn sm primary" data-cita="' + c.id + '" data-acc="confirmar">Confirmar por el taller</button><button class="btn sm" data-cita="' + c.id + '" data-acc="rechazar">Rechazar</button></div>' : "") + "</div>";
+    }).join("") : "<div class='empty'>Todavía no hay citas.</div>");
+    var cv = byId(state.dConvs, state.dconv);
+    if (cv) return '<button class="back" data-conv="">← Todas las conversaciones</button><h1>' + esc(cv.nombre || "Sin nombre") + " " + chip(cv.requiere_humano ? "Espera a una persona" : "Con el asistente") + '</h1><p class="muted small">' + esc(cv.telefono) + (cv.motivo_humano ? " · Motivo: " + esc(cv.motivo_humano) : "") + "</p>" +
+      '<div class="chat">' + state.dMsgs.map(function (m) {
+        return '<div class="bubble ' + (m.rol === "user" ? "in" : m.autor === "humano" ? "out human" : "out") + '"><small>' + (m.rol === "user" ? "Cliente" : m.autor === "humano" ? "Equipo" : "Asistente") + " · " + fecha(m.created_at) + "</small>" + esc(m.texto) + "</div>";
+      }).join("") + "</div>" +
+      '<form class="card" data-form="wa-responder"><div class="field"><label for="wa-txt">Responder como equipo</label><textarea id="wa-txt" rows="2" required placeholder="Tu mensaje llega al WhatsApp de la persona"></textarea></div>' +
+      '<div class="actions"><button class="btn primary">Enviar</button>' + (cv.requiere_humano ? '<button type="button" class="btn" data-devolver="' + cv.id + '">Devolver al asistente</button>' : "") + "</div>" +
+      '<p class="muted small" style="margin-top:8px">Al responder, el asistente se queda en silencio en esta conversación hasta que la devuelvas. Meta solo permite escribir dentro de las 24 horas posteriores al último mensaje de la persona.</p></form>';
+    return head + (state.dConvs.length ? state.dConvs.map(function (c) {
+      return '<button class="sint" data-conv="' + c.id + '"><span><b>' + esc(c.nombre || "Sin nombre") + " · …" + esc(c.telefono.slice(-4)) + "</b><small>" + fecha(c.updated_at) + (c.motivo_humano ? " · " + esc(c.motivo_humano) : "") + "</small></span>" + chip(c.requiere_humano ? "Espera a una persona" : "Con el asistente") + "</button>";
+    }).join("") : "<div class='empty'>Todavía no hay conversaciones.</div>");
+  }
   function viewDTalleres() {
     var reales = state.dTalleres.filter(function (t) { return !t.es_demo; });
     return "<h1>Talleres</h1><p class='muted small'>Los talleres verificados aparecen en el mapa de los conductores.</p>" +
@@ -664,7 +717,7 @@
   // =====================================================================
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
-    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-servicios": viewDServicios, "d-talleres": viewDTalleres, acceso: viewAcceso, cuenta: viewCuenta };
+    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-servicios": viewDServicios, "d-talleres": viewDTalleres, "d-atencion": viewDAtencion, acceso: viewAcceso, cuenta: viewCuenta };
   function render() {
     nav();
     if (map) { map.remove(); map = null; }
@@ -723,6 +776,11 @@
     else if (d.terminar) await done(await call(sb.rpc("mekachi_terminar_solicitud", { p_solicitud: d.terminar })), "Trabajo terminado y registrado.");
     else if (d.rate) await done(await call(sb.rpc("mekachi_calificar", { p_solicitud: d.rate, p_rating: +d.n })), "Gracias por calificar.");
     else if (d.avanzar) await done(await call(sb.rpc("mekachi_despacho_avanzar", { p_pedido: d.avanzar })), "Pedido actualizado.");
+    else if (d.dsub) { state.dsub = d.dsub; state.dconv = null; render(); }
+    else if ("conv" in d) { state.dconv = d.conv || null; state.dMsgs = []; if (state.dconv) await loadMsgs(); render(); window.scrollTo(0, document.body.scrollHeight); }
+    else if (d.devolver) await done(await call(sb.from("mekachi_wa_conversaciones").update({ requiere_humano: false, motivo_humano: "", humano_desde: null }).eq("id", d.devolver)), "El asistente vuelve a atender esta conversación.");
+    else if (d.grua) await done(await call(sb.from("mekachi_gruas_solicitudes").update({ estado: d.e }).eq("id", d.grua)), "Grúa actualizada.");
+    else if (d.cita) await done(await call(sb.rpc("mekachi_responder_cita", { p_cita: d.cita, p_accion: d.acc })), d.acc === "confirmar" ? "Cita confirmada. Se avisa al cliente por WhatsApp." : "Cita rechazada. Se avisa al cliente por WhatsApp.");
     else if (d.verif) await done(await call(sb.from("mekachi_talleres").update({ verificado: d.v === "1" }).eq("id", d.verif)), d.v === "1" ? "Taller verificado." : "Verificación retirada.");
     else if (d.delveh) {
       if (!window.confirm("¿Quitar este vehículo del garaje?" + (state.user ? " También se borra su historial." : ""))) return;
@@ -822,6 +880,12 @@
         await done(await call(sb.rpc("mekachi_cotizar", { p_cotizacion: f.dataset.id, p_mano_obra: +f.elements.mano.value, p_repuestos: +f.elements.rep.value, p_nota: f.elements.nota.value.trim() })), "Precio enviado al cliente");
       } else if (kind === "cotizar-linea") {
         await done(await call(sb.rpc("mekachi_despacho_cotizar_item", { p_item: f.dataset.id, p_precio: +f.elements.precio.value })), "Pieza cotizada");
+      } else if (kind === "wa-responder") {
+        var ses = await sb.auth.getSession();
+        var resp = await fetch(CFG.supabaseUrl + "/functions/v1/mekachi-whatsapp?accion=responder", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.supabaseKey, Authorization: "Bearer " + ses.data.session.access_token }, body: JSON.stringify({ conversacion_id: state.dconv, texto: v("wa-txt") }) });
+        var out = await resp.json().catch(function () { return {}; });
+        if (!resp.ok) return toast(out.error || "No se pudo enviar el mensaje.");
+        await reload(); toast("Mensaje enviado por WhatsApp");
       } else if (kind === "pedido") {
         var items = state.cart.map(function (l) { return l.custom ? { nombre: l.nombre, detalle: l.detalle, cantidad: l.qty } : { producto_id: l.id, cantidad: l.qty }; });
         var ok = await call(sb.rpc("mekachi_crear_pedido", { p_items: items, p_pago: v("p-pago"), p_nota: v("p-nota"), p_direccion: v("p-dir"), p_zona: v("p-zona"), p_solicitud: state.sug ? state.sug.id : null }));

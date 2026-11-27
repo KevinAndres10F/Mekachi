@@ -53,15 +53,94 @@ El código desplegado es idéntico al del repositorio (comprobado el 27 de novie
 | Webhook | `https://hxhpgpvfjgurugnmdrbu.supabase.co/functions/v1/mekachi-whatsapp` |
 | Conversaciones | Tabla `mekachi_wa_conversaciones` |
 | Mensajes | Tabla `mekachi_wa_mensajes` |
-| Modelo | Claude Opus 5.5 (`claude-opus-5-5`) |
+| Modelo | Claude Opus 5.5 por defecto; configurable |
+| Citas | Tabla `mekachi_citas` |
+| Grúas | Tablas `mekachi_gruas_proveedores` y `mekachi_gruas_solicitudes` |
+| Configuración | Tabla `mekachi_config` |
 
 ## Qué hace el asistente
 
-- **Conductores:** pregunta por el síntoma, da una orientación inicial con nivel de urgencia y recomienda talleres verificados.
-- **Talleres:** si el número que escribe coincide con el teléfono o WhatsApp de un taller registrado, busca repuestos y registra el pedido cuando la persona confirma la lista.
-- **Traspaso a una persona:** cuando lo piden, hay un reclamo o no puede resolver. La conversación queda marcada con `requiere_humano` y el asistente deja de responder en ella.
+- **Se presenta** en el primer mensaje como asistente automático.
+- **Conductores:** pregunta por el síntoma y por el barrio, traduce el barrio a una zona de Quito, da una orientación inicial con nivel de urgencia y recomienda talleres.
+- **Citas:** agenda una cita en un taller. Queda pendiente hasta que el taller la confirma en la app; el cliente recibe el aviso por WhatsApp.
+- **Grúa:** la ofrece sola en casos de seguridad (frenos, temperatura, luz de aceite o batería, humo, olor a combustible). Pide ubicación, tipo de vehículo, destino y teléfono, y acepta la ubicación compartida de WhatsApp.
+- **Talleres:** si el número que escribe coincide con el teléfono o WhatsApp de un taller registrado, busca repuestos, registra pedidos y consulta el estado de un pedido por número.
+- **Fotos:** las lee (tablero, pieza, fuga) y las usa para orientar.
+- **Audios:** todavía no los escucha; pide que escriban. Falta contratar un servicio de transcripción.
+- **Traspaso a una persona:** cuando lo piden, hay un reclamo o se agotaron las alternativas.
 
-Límites que tiene puestos: no da precios de mano de obra, no da diagnósticos definitivos, no inventa talleres ni precios, y solo lee mensajes de texto.
+Límites que tiene puestos: no da precios de mano de obra, no da diagnósticos definitivos, no inventa talleres, precios ni grúas, y antes de escalar ofrece ampliar la zona, un taller de mantenimiento general o la app.
+
+## Modo demostración
+
+Con `modo_demo` en `true`, el asistente usa los talleres, repuestos, precios y grúas de demostración y lo dice en cada recomendación. Con `false` solo usa datos reales y verificados.
+
+Datos de demostración cargados:
+
+| Dato | Cantidad | Notas |
+|---|---|---|
+| Talleres | 15 | Todas las especialidades en las cuatro zonas, con horario, dirección y calificaciones inventadas |
+| Taller del socio | 1 de los 15 | Usa el número del socio, para probar pedidos de repuestos por chat |
+| Repuestos | 90 | Chevrolet, Kia, Hyundai, Toyota, Chery, Great Wall y JAC |
+| Proveedores de grúa | 5 | Uno por zona más una plataforma |
+| Pedidos | 3 | Del taller del socio: entregado, en camino y registrado |
+
+Los talleres y grúas de demostración no tienen número de WhatsApp real, para que nadie escriba o llame a un desconocido.
+
+## Atención de una persona
+
+1. El asistente marca la conversación y **avisa al equipo por WhatsApp** a los números de `admin_wa`.
+2. El equipo responde desde la app, en **Despacho > Atención**, donde se ve la conversación completa.
+3. Mientras una persona atiende, el asistente guarda silencio en esa conversación.
+4. Para devolverla al asistente: botón "Devolver al asistente" en la app, o el comando `#bot 1234` por WhatsApp, con los últimos cuatro dígitos del número.
+5. Si nadie responde en el tiempo de `espera_humano_min` (30 minutos), el asistente retoma solo y se disculpa por la demora.
+
+Comandos del equipo por WhatsApp, solo desde los números de `admin_wa`: `#pendientes`, `#bot 1234` y `#ayuda`.
+
+Meta solo entrega mensajes libres a quien escribió al número en las últimas 24 horas. Por eso el aviso al equipo llega solo si ese número habló con el asistente en el último día; el panel de la app siempre lo muestra.
+
+## Módulo de grúa
+
+| Pieza | Dónde |
+|---|---|
+| Proveedores | Tabla `mekachi_gruas_proveedores` |
+| Solicitudes | Tabla `mekachi_gruas_solicitudes`, numeradas GR-0001 |
+| Estados | Solicitada, Asignada, En camino, Completada, Cancelada |
+| Gestión | App, Despacho > Atención > Grúas |
+
+El asistente asigna el proveedor de la zona, da un tiempo y un precio estimados, y avisa al equipo y al proveedor si tiene WhatsApp. En modo demostración avisa que no llegará una grúa real.
+
+## Configuración sin redesplegar
+
+Tabla `mekachi_config`, editable desde Supabase:
+
+| Clave | Para qué |
+|---|---|
+| `modo_demo` | `true` o `false` |
+| `admin_wa` | Números del equipo que reciben avisos, separados por coma, con código de país y sin `+` |
+| `espera_humano_min` | Minutos antes de que el asistente retome una conversación sin atender |
+| `datos_negocio` | Horario, cobertura, pagos y tiempos de entrega. Lo marcado PENDIENTE el asistente lo trata como no confirmado |
+| `modelo` | Modelo de Claude, si no se define el secreto |
+| `app_url` | Enlace de la app que el asistente puede compartir |
+| `cron_secreto` | Uso interno; no tocar |
+
+**Pendiente de Kevin:** completar `datos_negocio` con los valores reales.
+
+## Tareas programadas
+
+Cada 5 minutos la base llama a la función (tarea `mekachi-whatsapp-tareas`) para retomar conversaciones sin atender, avisar al cliente cuando un taller confirma o rechaza una cita, y enviar el seguimiento si la plantilla está configurada.
+
+## Seguimiento para calificar al taller
+
+El código está listo y apagado. Se activa creando en Meta una plantilla aprobada y guardando su nombre en el secreto `WA_PLANTILLA_SEGUIMIENTO`. Se envía a los 2 o 3 días de una cita confirmada.
+
+Texto propuesto para la plantilla (categoría Utilidad, idioma español):
+
+> Hola {{1}}, te escribe Mekachi. Hace unos días te atendieron en {{2}}. ¿Cómo te fue? Responde con una calificación del 1 al 5 y cuéntanos si algo se puede mejorar.
+
+## Modelo de Claude
+
+Por defecto usa Claude Opus 5.5. Para probar otro, crear el secreto `MEKACHI_MODELO`, por ejemplo con `claude-sonnet-5-5`, que cuesta la mitad por mensaje. Conviene comparar las mismas conversaciones con ambos antes de decidir.
 
 ## Secretos
 
@@ -75,7 +154,7 @@ Se guardan en Supabase, en Edge Functions > Secrets. Si falta alguno, la funció
 | `WA_APP_SECRET` | Clave secreta de la app; valida la firma de cada mensaje | App de Meta, Configuración de la app > Básica |
 | `WA_VERIFY_TOKEN` | Texto propio que se repite al registrar el webhook | Lo elige Mekachi |
 
-Opcionales: `MEKACHI_APP_URL` (enlace a la app que el asistente puede compartir) y `WA_GRAPH_VERSION` (versión de la API de Meta; por defecto `v23.0`).
+Opcionales: `MEKACHI_MODO_DEMO`, `MEKACHI_MODELO`, `MEKACHI_APP_URL`, `WA_PLANTILLA_SEGUIMIENTO` y `WA_GRAPH_VERSION` (versión de la API de Meta; por defecto `v27.0`, igual que el webhook). Si existe el secreto, manda sobre la tabla de configuración.
 
 ## Pasos de configuración
 
@@ -111,7 +190,7 @@ Opcionales: `MEKACHI_APP_URL` (enlace a la app que el asistente puede compartir)
 - **Meta no acepta el webhook:** el texto de verificación no coincide con el secreto, o los secretos aún no están guardados.
 - **Llega el mensaje pero no hay respuesta:** revisar los registros. Las causas habituales son el token de WhatsApp caducado, la clave de Claude sin saldo o un destinatario que no está en la lista permitida.
 - **Respuestas "Firma no válida":** el secreto de la app guardado no es el de la app que envía los mensajes.
-- **El asistente dejó de responder a una persona:** la conversación quedó marcada para atención humana. Se reactiva poniendo `requiere_humano` en falso en `mekachi_wa_conversaciones`.
+- **El asistente dejó de responder a una persona:** la conversación está marcada para atención humana. Se devuelve desde la app o con `#bot 1234`; si nadie la atiende, el asistente retoma a los 30 minutos.
 - **Un taller no puede pedir repuestos:** su número de WhatsApp no coincide con el teléfono o WhatsApp guardado en su perfil de taller.
 
 ## Pendiente para producción
@@ -121,9 +200,10 @@ Opcionales: `MEKACHI_APP_URL` (enlace a la app que el asistente puede compartir)
 - Reemplazar la política de privacidad por una página propia cuando haya sitio web.
 - Agregar más destinatarios de prueba (el socio) desde "Paso 1 > Administrar lista de números".
 - Opcional: secreto `MEKACHI_APP_URL` con el enlace de la app.
-- Opcional: secreto `WA_GRAPH_VERSION`. El código envía con v23.0 por defecto y el webhook está en v27.0; funciona así, pero conviene igualarlos.
-- Una pantalla en el perfil de despacho para ver las conversaciones marcadas para atención humana.
-- Avisos automáticos por WhatsApp al cambiar el estado de un pedido o una solicitud; requieren plantillas aprobadas por Meta.
+- Pasar `modo_demo` a `false` cuando haya talleres y proveedores de grúa reales.
+- Servicio de transcripción para los audios.
+- Aviso al equipo por correo, si se quiere además de WhatsApp.
+- Plantillas aprobadas por Meta para escribir fuera de la ventana de 24 horas: seguimiento, avisos de estado de pedido y avisos al equipo.
 
 ## Mantenimiento
 
