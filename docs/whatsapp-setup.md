@@ -4,14 +4,39 @@ Cómo está montado el asistente de WhatsApp con IA de Mekachi y cómo repetir o
 
 ## Estado
 
-| | |
-|---|---|
-| Estado | Funcionando en **modo pruebas** |
-| Primera prueba | 27 de noviembre de 2026: un mensaje recibido y uno respondido |
-| Número | Pendiente de anotar (número de prueba de Meta o número propio) |
-| Alcance | Solo responde a los destinatarios agregados a mano en Meta |
+Funcionando en **modo pruebas** desde el 27 de noviembre de 2026. Solo responde a los destinatarios agregados a mano en Meta (máximo 5).
 
-Datos por completar cuando se tengan a la mano: nombre e identificador de la app de Meta, portafolio comercial, número usado y nombre del usuario del sistema.
+## Datos de la configuración
+
+Son identificadores, no claves. Sin el token no dan acceso a nada.
+
+**Meta**
+
+| Dato | Valor |
+|---|---|
+| App | Mekachi, tipo Negocios, caso de uso "Otro" |
+| Identificador de la app | `2491382474720894` |
+| Modo de la app | Activo |
+| Portafolio comercial | Mekachi, `1359383679534091` (sin verificar) |
+| Cuenta de WhatsApp Business | "Test WhatsApp Account", `2948859242173845` |
+| Número | De prueba de Meta: +1 555 188 2110 |
+| Identificador del número | `1517041161485607` |
+| Destinatarios de prueba | Un número personal verificado; no se anota aquí |
+| Usuario del sistema | `mekachi-bot` (`61597061188435`), rol Administrador, control total sobre la app y la cuenta de WhatsApp |
+| Token | Permanente, sin caducidad, con `whatsapp_business_messaging` y `whatsapp_business_management` |
+| Webhook | Campo `messages` suscrito, versión v27.0 |
+| Política de privacidad | [Documento público de Google](https://docs.google.com/document/d/1PglimFYXW2j09Ky3p9juQsXgWDH4h95r_5v3OjdCHvw/edit?usp=sharing), categoría "Negocios y páginas" |
+
+**Supabase**
+
+| Dato | Valor |
+|---|---|
+| Proyecto | `hxhpgpvfjgurugnmdrbu` |
+| Función | `mekachi-whatsapp`, versión 3, sin verificación de JWT (valida la firma de Meta) |
+| Secretos | Los cinco de la tabla de más abajo, cargados |
+| Clave de Claude | Se llama `mekachi-whatsapp` en la consola de Claude |
+
+El código desplegado es idéntico al del repositorio (comprobado el 27 de noviembre de 2026).
 
 ## Cómo funciona
 
@@ -62,7 +87,9 @@ Opcionales: `MEKACHI_APP_URL` (enlace a la app que el asistente puede compartir)
 6. **Clave de Claude.** Crear una clave en la consola y comprobar que la cuenta tiene saldo.
 7. **Guardar los cinco secretos en Supabase.** Con los nombres exactos de la tabla anterior.
 8. **Registrar el webhook en Meta.** En WhatsApp > Configuración: la URL del webhook, el mismo texto de verificación, "Verificar y guardar", y suscribirse al campo `messages`. Este paso solo funciona después del paso 7.
-9. **Probar.** Escribir al número desde un destinatario permitido; la respuesta debe llegar en menos de un minuto.
+9. **Suscribir la app a la cuenta de WhatsApp Business.** Con el Explorador de la API Graph, `POST /{id-de-la-cuenta-de-WhatsApp}/subscribed_apps`. Se comprueba con un `GET` al mismo punto: debe aparecer Mekachi. Sin esto el webhook se verifica pero no llegan mensajes reales.
+10. **Pasar la app a modo Activo.** En modo desarrollo Meta no entrega los webhooks reales. Pide una URL de política de privacidad.
+11. **Probar.** Con un número de prueba de Meta, primero enviar la plantilla desde "Paso 1: Pruébalo" y responder en ese chat; el número no aparece como contacto hasta entonces. La respuesta debe llegar en menos de un minuto.
 
 ## Comprobaciones
 
@@ -73,7 +100,13 @@ Opcionales: `MEKACHI_APP_URL` (enlace a la app que el asistente puede compartir)
 | Mensajes llegando | Tabla `mekachi_wa_mensajes` | Una fila `user` y una `assistant` por intercambio |
 | Errores | Supabase, Edge Functions > mekachi-whatsapp > Logs | Sin errores |
 
-## Problemas frecuentes
+## Problemas encontrados en la puesta en marcha
+
+1. **El número de prueba no aparecía en WhatsApp como contacto.** Hay que enviar primero la plantilla desde "Paso 1: Pruébalo" y responder en ese chat.
+2. **No llegaban mensajes reales aunque el webhook estaba verificado.** La cuenta de WhatsApp Business no tenía la app suscrita. Se resolvió con `POST /2948859242173845/subscribed_apps` en el Explorador de la API Graph.
+3. **La app estaba en modo desarrollo.** Se pasó a modo Activo, porque en desarrollo Meta no entrega webhooks reales.
+
+## Otros problemas posibles
 
 - **Meta no acepta el webhook:** el texto de verificación no coincide con el secreto, o los secretos aún no están guardados.
 - **Llega el mensaje pero no hay respuesta:** revisar los registros. Las causas habituales son el token de WhatsApp caducado, la clave de Claude sin saldo o un destinatario que no está en la lista permitida.
@@ -81,11 +114,14 @@ Opcionales: `MEKACHI_APP_URL` (enlace a la app que el asistente puede compartir)
 - **El asistente dejó de responder a una persona:** la conversación quedó marcada para atención humana. Se reactiva poniendo `requiere_humano` en falso en `mekachi_wa_conversaciones`.
 - **Un taller no puede pedir repuestos:** su número de WhatsApp no coincide con el teléfono o WhatsApp guardado en su perfil de taller.
 
-## Pendiente para salir de pruebas
+## Pendiente para producción
 
-- Registrar un número propio de Mekachi; un número que ya usa la app normal de WhatsApp no se puede registrar tal cual.
-- Pasar la app de Meta a modo Activo, lo que pide una URL de política de privacidad.
-- Verificar el negocio en Meta con documentos y agregar medio de pago.
+- Registrar el número real de Mekachi, que no puede estar activo en la app normal de WhatsApp, y actualizar `WA_PHONE_NUMBER_ID`.
+- Verificar el negocio en Meta y agregar medio de pago en la cuenta de WhatsApp Business; hace falta para los mensajes que inicia la empresa.
+- Reemplazar la política de privacidad por una página propia cuando haya sitio web.
+- Agregar más destinatarios de prueba (el socio) desde "Paso 1 > Administrar lista de números".
+- Opcional: secreto `MEKACHI_APP_URL` con el enlace de la app.
+- Opcional: secreto `WA_GRAPH_VERSION`. El código envía con v23.0 por defecto y el webhook está en v27.0; funciona así, pero conviene igualarlos.
 - Una pantalla en el perfil de despacho para ver las conversaciones marcadas para atención humana.
 - Avisos automáticos por WhatsApp al cambiar el estado de un pedido o una solicitud; requieren plantillas aprobadas por Meta.
 
