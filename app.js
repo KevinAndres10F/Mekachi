@@ -26,7 +26,7 @@
   var MODES = {
     conductor: { label: "Conductor", tabs: [["c-inicio", "Inicio", "home"], ["diag", "Diagnóstico", "pulse"], ["talleres", "Talleres", "pin"], ["solicitudes", "Solicitudes", "list"], ["garaje", "Garaje", "car"]] },
     taller: { label: "Taller", tabs: [["t-inicio", "Inicio", "home"], ["trabajos", "Trabajos", "wrench"], ["catalogo", "Repuestos", "box"], ["pedidos", "Pedidos", "truck"], ["perfil", "Mi taller", "shop"]] },
-    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-servicios", "Servicios", "wrench"], ["d-talleres", "Talleres", "shop"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"]] }
+    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-inventario", "Inventario", "box"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"], ["d-red", "Red", "shop"]] }
   };
   var PARENT = { solicitar: "talleres", carrito: "catalogo" };
   var VIEWMODE = { solicitar: "conductor", carrito: "taller" };
@@ -41,7 +41,7 @@
     dq: "", dcat: "Todos", dsel: null, fesp: "Todas", fzona: "Todas", pos: null, tsel: [], vsel: null, draft: null,
     garaje: store.get("garaje", []), solicitudes: [], historial: [],
     q: "", cat: "Todas", sug: null, cart: store.get("cart", []), trabajos: [], pedidos: [],
-    dPedidos: [], dSolicitudes: [], dTalleres: [], dConvs: [], dMsgs: [], dGruas: [], dCitas: [], dsub: "conv", dconv: null, tCitas: [], dClientes: [], dcli: null, dCliDet: null, cfil: "todos", cq: ""
+    dPedidos: [], dSolicitudes: [], dTalleres: [], dConvs: [], dMsgs: [], dGruas: [], dCitas: [], dsub: "conv", dconv: null, tCitas: [], dClientes: [], dcli: null, dCliDet: null, cfil: "todos", cq: "", dInv: [], iprod: null, iMovs: [], ifil: "todos", iq: "", inuevo: false, rsub: "talleres"
   };
 
   var $ = function (s) { return document.querySelector(s); };
@@ -95,7 +95,7 @@
       ]);
       if (r[0].error || r[1].error) return local();
       state.talleres = r[0].data.filter(function (t) { return t.verificado || t.es_demo; }).map(mapTaller);
-      state.productos = r[1].data.map(function (p) { return { id: p.id, cat: p.categoria, nombre: p.nombre, compat: p.compatibilidad, precio: +p.precio }; });
+      state.productos = r[1].data.map(function (p) { return { id: p.id, cat: p.categoria, nombre: p.nombre, compat: p.compatibilidad, precio: +p.precio, disp: !!p.disponible }; });
     } catch (e) { local(); }
   }
   async function loadAuth() {
@@ -162,6 +162,8 @@
       if (!a[1].error) state.dGruas = a[1].data;
       if (!a[2].error) state.dCitas = a[2].data;
       if (state.dconv) await loadMsgs();
+      var iv = await sb.from("mekachi_productos").select("*, inv:mekachi_inventario(*)").order("categoria").order("nombre");
+      if (!iv.error) state.dInv = iv.data.map(function (x) { var i = x.inv || {}; return { id: x.id, codigo: x.codigo, cat: x.categoria, nombre: x.nombre, compat: x.compatibilidad, precio: +x.precio, activo: x.activo, demo: x.es_demo, stock: i.stock || 0, minimo: i.stock_minimo || 0, costo: +(i.costo || 0), proveedor: i.proveedor || "", ubicacion: i.ubicacion || "" }; });
       var cl = await sb.rpc("mekachi_clientes");
       if (!cl.error) state.dClientes = cl.data || [];
     }
@@ -186,7 +188,8 @@
     if (v === "d-pedidos") return count(state.dPedidos, function (o) { return o.estado !== "Entregado"; });
     if (v === "d-atencion") return count(state.dConvs, function (c) { return c.requiere_humano; }) + count(state.dGruas, gruaActiva) + count(state.dCitas, function (c) { return c.estado === "Pendiente"; });
     if (v === "d-clientes") return count(state.dClientes, porSeguir);
-    if (v === "d-talleres") return count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; });
+    if (v === "d-inventario") return count(state.dInv, bajoMinimo);
+    if (v === "d-red") return count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; });
     return 0;
   }
   function nav() {
@@ -220,7 +223,7 @@
     state.view = v; render(); window.scrollTo(0, 0);
     var h = "#/" + v;
     if (location.hash !== h) { if (replace) history.replaceState(null, "", h); else history.pushState(null, "", h); }
-    if (LIVE[v] || v === "garaje" || v === "d-talleres") reload();
+    if (LIVE[v] || v === "garaje" || v === "d-red" || v === "d-inventario") reload();
     // El mapa siempre muestra la red al día: talleres recién verificados y calificaciones.
     if (v === "talleres" && state.ready) loadPublic().then(function () { if (state.view === "talleres") render(); });
   }
@@ -574,7 +577,7 @@
     if (!items.length) return '<div class="empty">No hay repuestos con esa búsqueda.<br>Pídelo abajo y despacho te lo cotiza.</div>';
     return items.map(function (p) {
       var l = state.cart.filter(function (x) { return x.id === p.id; })[0];
-      return '<div class="item"><div><div class="name">' + esc(p.nombre) + '</div><div class="meta">' + esc(p.compat) + '</div><div class="price">' + usd(p.precio) + ' <span class="meta">+ IVA</span></div></div>' +
+      return '<div class="item"><div><div class="name">' + esc(p.nombre) + '</div><div class="meta">' + esc(p.compat) + '</div><div class="price">' + usd(p.precio) + ' <span class="meta">+ IVA · ' + (p.disp ? "en bodega" : "bajo pedido") + '</span></div></div>' +
         (l ? stepper(p.id, l.qty) : '<button class="btn sm primary" data-inc="' + esc(p.id) + '">Agregar</button>') + "</div>";
     }).join("");
   }
@@ -652,7 +655,7 @@
       '<div class="section-title">Servicios</div><div class="kpis">' + k(s.length, "Solicitudes") + k(count(s, function (x) { return x.estado === "Aceptada"; }), "En curso") +
       k(count(s, function (x) { return x.estado === "Terminada"; }), "Terminados") + k(usd(servicios), "Cobrado por talleres") + "</div>" +
       '<div class="section-title">Red</div><div class="kpis">' + k(count(state.dTalleres, function (t) { return t.verificado; }), "Talleres verificados") + k(count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; }), "Por verificar") + "</div>" +
-      '<div class="actions"><button class="btn primary" data-go="d-pedidos">Atender pedidos</button><button class="btn" data-go="d-talleres">Verificar talleres</button></div>';
+      '<div class="actions"><button class="btn primary" data-go="d-pedidos">Atender pedidos</button><button class="btn" data-go="d-red">Verificar talleres</button></div>';
   }
   function viewDPedidos() {
     if (!state.dPedidos.length) return "<h1>Pedidos de talleres</h1><div class='empty'>" + (state.loading ? "Cargando…" : "Todavía no hay pedidos.") + "</div>";
@@ -664,7 +667,7 @@
             '</span><input name="precio" type="number" min="0.01" step="0.01" required placeholder="Precio $" aria-label="Precio unitario"><button class="btn sm">Cotizar</button></form>';
         }).join("");
         return '<div class="card"><div class="head"><div><h2>' + esc(o.num) + " · " + esc(t.nombre) + '</h2><div class="muted small">' + fecha(o.created_at) + " · " + esc(o.direccion) + " (" + esc(o.zona) + ") · " + esc(o.pago) + (t.telefono ? " · " + esc(t.telefono) : "") + "</div></div>" + chip(o.estado) + "</div>" +
-          track(o) + orderLines(o) + cot + orderTotal(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
+          track(o) + orderLines(o) + cot + (i < 2 ? faltantes(o) : "") + orderTotal(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
           (sig ? '<div class="actions"><button class="btn sm primary" data-avanzar="' + o.id + '"' + (bloq ? " disabled" : "") + ">Marcar como " + sig.toLowerCase() + "</button>" + (bloq ? '<span class="muted small">Cotiza primero las piezas pendientes.</span>' : "") + "</div>" : "") + "</div>";
       }).join("");
   }
@@ -706,6 +709,83 @@
       return '<button class="sint" data-conv="' + c.id + '"><span><b>' + esc(c.nombre || "Sin nombre") + " · …" + esc(c.telefono.slice(-4)) + "</b><small>" + fecha(c.updated_at) + (c.motivo_humano ? " · " + esc(c.motivo_humano) : "") + "</small></span>" + chip(c.requiere_humano ? "Espera a una persona" : "Con el asistente") + "</button>";
     }).join("") : "<div class='empty'>Todavía no hay conversaciones.</div>");
   }
+  // ---------- Inventario
+  var bajoMinimo = function (x) { return x.activo && x.stock <= x.minimo; };
+  var IFILTROS = [["todos", "Todos", function () { return true; }], ["bajo", "Bajo mínimo", function (x) { return x.activo && x.stock > 0 && x.stock <= x.minimo; }],
+    ["cero", "Sin existencias", function (x) { return x.stock === 0; }], ["con", "Con existencias", function (x) { return x.stock > 0; }]];
+  statusCls["Sin existencias"] = "warn"; statusCls["Bajo mínimo"] = "warn"; statusCls["En bodega"] = "ok"; statusCls.Entrada = "ok"; statusCls.Salida = "info"; statusCls.Ajuste = "warn"; statusCls["Devolución"] = "ok";
+  var margen = function (x) { return x.precio > 0 && x.costo > 0 ? Math.round((x.precio - x.costo) / x.precio * 100) + " %" : "—"; };
+  function invFiltrado() {
+    var f = IFILTROS.filter(function (x) { return x[0] === state.ifil; })[0][2], q = norm(state.iq.trim());
+    return state.dInv.filter(function (x) { return f(x) && (!q || q.split(/\s+/).every(function (w) { return norm(x.nombre + " " + x.compat + " " + x.cat + " " + (x.codigo || "")).indexOf(w) >= 0; })); });
+  }
+  function invListHtml() {
+    var list = invFiltrado();
+    if (!list.length) return "<div class='empty'>" + (state.loading ? "Cargando…" : "No hay repuestos con ese filtro.") + "</div>";
+    return list.map(function (x) {
+      return '<button class="sint" data-inv="' + x.id + '"><span><b>' + esc(x.nombre) + "</b><small>" + esc(x.compat) + " · " + esc(x.codigo || "sin código") + "<br>Costo " + usd(x.costo) + " · Precio " + usd(x.precio) + " · Margen " + margen(x) + "</small></span>" +
+        '<span style="text-align:right;flex:none"><b style="font-size:1.25rem">' + x.stock + "</b><br>" + chip(x.stock === 0 ? "Sin existencias" : x.stock <= x.minimo ? "Bajo mínimo" : "En bodega") + "</span></button>";
+    }).join("");
+  }
+  // Lo que falta en bodega para un pedido que aún no sale.
+  function faltantes(o) {
+    var f = (o.items || []).filter(function (l) { return l.producto_id; }).map(function (l) { var x = byId(state.dInv, l.producto_id); return { l: l, falta: Math.max(l.cantidad - (x ? x.stock : 0), 0) }; }).filter(function (y) { return y.falta > 0; });
+    if (!(o.items || []).some(function (l) { return l.producto_id; })) return "";
+    return f.length ? '<div class="notice"><b>Falta en bodega:</b> ' + f.map(function (y) { return y.falta + " × " + esc(y.l.nombre); }).join(", ") + ". Al despachar se registra como compra contra pedido.</div>" : '<p class="muted small">Todo lo de catálogo está en bodega.</p>';
+  }
+  function viewDInventario() {
+    var all = state.dInv, x = state.iprod ? byId(all, state.iprod) : null;
+    if (x) return viewProducto(x);
+    var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; };
+    var valor = all.reduce(function (n, y) { return n + y.stock * y.costo; }, 0), venta = all.reduce(function (n, y) { return n + y.stock * y.precio; }, 0);
+    return "<h1>Inventario</h1><p class='muted small'>Existencias en bodega. Al despachar un pedido, la mercadería sale sola del inventario.</p>" +
+      '<div class="kpis">' + k(all.length, "Repuestos") + k(all.reduce(function (n, y) { return n + y.stock; }, 0), "Unidades en bodega") + k(usd(valor), "Valor al costo") + k(usd(venta), "Valor a precio de venta") +
+      k(count(all, IFILTROS[1][2]), "Bajo mínimo") + k(count(all, IFILTROS[2][2]), "Sin existencias") + "</div>" +
+      '<input type="search" id="iq" placeholder="Buscar por nombre, vehículo o código" value="' + esc(state.iq) + '" aria-label="Buscar repuesto">' +
+      '<div class="chips">' + IFILTROS.map(function (f) { return '<button data-ifil="' + f[0] + '" aria-pressed="' + (state.ifil === f[0]) + '">' + f[1] + " · " + count(all, f[2]) + "</button>"; }).join("") + "</div>" +
+      '<div class="list" id="ilist">' + invListHtml() + "</div>" +
+      '<div class="actions" style="margin:14px 0"><button class="btn sm primary" data-inuevo="1">' + (state.inuevo ? "Cancelar" : "Nuevo repuesto") + '</button><button class="btn sm" data-icsv="1">Descargar inventario (CSV)</button></div>' +
+      (state.inuevo ? '<form class="card" data-form="inv-nuevo"><h2>Nuevo repuesto</h2><div class="row">' + field("n-nombre", "Nombre", 'required placeholder="Pastillas de freno delanteras"', "") + field("n-compat", "Vehículos compatibles", 'required placeholder="Chevrolet Sail"', "") + "</div>" +
+        '<div class="row">' + field("n-cat", "Categoría", 'required list="cats" placeholder="Frenos"', "") + field("n-codigo", "Código", 'required placeholder="b30"', "") + "</div>" +
+        '<datalist id="cats">' + all.map(function (y) { return y.cat; }).filter(function (c, i, a) { return a.indexOf(c) === i; }).map(function (c) { return '<option value="' + esc(c) + '">'; }).join("") + "</datalist>" +
+        '<div class="row">' + field("n-costo", "Costo de compra $", 'type="number" min="0" step="0.01" required', "") + field("n-precio", "Precio de venta $ (sin IVA)", 'type="number" min="0" step="0.01" required', "") + "</div>" +
+        '<div class="row">' + field("n-stock", "Existencias iniciales", 'type="number" min="0" step="1" required', "0") + field("n-min", "Mínimo para alerta", 'type="number" min="0" step="1" required', "2") + "</div>" +
+        '<button class="btn primary block">Crear repuesto</button></form>' : "");
+  }
+  function viewProducto(x) {
+    return '<button class="back" data-inv="">← Todo el inventario</button><h1>' + esc(x.nombre) + " " + chip(x.stock === 0 ? "Sin existencias" : x.stock <= x.minimo ? "Bajo mínimo" : "En bodega") + "</h1>" +
+      '<p class="muted small">' + esc(x.compat) + " · " + esc(x.cat) + " · " + esc(x.codigo || "sin código") + (x.demo ? " · demostración" : "") + (x.activo ? "" : " · oculto del catálogo") + "</p>" +
+      '<div class="kpis"><div class="kpi"><b>' + x.stock + '</b><span>En bodega</span></div><div class="kpi"><b>' + usd(x.costo) + '</b><span>Costo promedio</span></div><div class="kpi"><b>' + usd(x.precio) + '</b><span>Precio sin IVA</span></div><div class="kpi"><b>' + margen(x) + "</b><span>Margen</span></div></div>" +
+      '<form class="card" data-form="inv-mover"><h2>Registrar movimiento</h2><div class="row"><div class="field"><label for="m-tipo">Tipo</label><select id="m-tipo"><option value="Entrada">Entrada (compra)</option><option value="Salida">Salida (venta directa, daño, pérdida)</option><option value="Devolución">Devolución de un taller</option><option value="Ajuste">Ajuste por conteo físico</option></select></div>' +
+      field("m-cant", "Cantidad (en ajuste: unidades contadas)", 'type="number" min="0" step="1" required', "") + "</div>" +
+      '<div class="row">' + field("m-costo", "Costo unitario $ (solo entradas)", 'type="number" min="0" step="0.01"', "") + field("m-motivo", "Motivo o referencia", 'maxlength="120" placeholder="Factura 001-123, proveedor…"', "") + "</div>" +
+      '<button class="btn primary">Registrar</button></form>' +
+      '<form class="card" data-form="inv-datos"><h2>Datos del repuesto</h2><div class="row">' + field("d-precio", "Precio de venta $ (sin IVA)", 'type="number" min="0" step="0.01" required', x.precio) + field("d-costo", "Costo $", 'type="number" min="0" step="0.01" required', x.costo) + "</div>" +
+      '<div class="row">' + field("d-min", "Mínimo para alerta", 'type="number" min="0" step="1" required', x.minimo) + field("d-prov", "Proveedor habitual", "", x.proveedor) + "</div>" +
+      field("d-ubi", "Ubicación en bodega", 'placeholder="Estante A3"', x.ubicacion) +
+      '<div class="checks" style="margin-bottom:12px"><label><input type="checkbox" id="d-activo"' + (x.activo ? " checked" : "") + "> Visible en el catálogo de talleres</label></div>" +
+      '<button class="btn primary">Guardar datos</button></form>' +
+      '<div class="section-title">Movimientos</div>' + (state.iMovs.length ? '<ul class="lines card">' + state.iMovs.map(function (m) {
+        return "<li><span>" + chip(m.tipo) + " " + esc(m.motivo) + '<br><span class="muted">' + fecha(m.created_at) + (m.costo_unit != null ? " · costo " + usd(m.costo_unit) : "") + "</span></span><span style=\"text-align:right;white-space:nowrap\"><b>" + (m.cantidad > 0 ? "+" : "") + m.cantidad + '</b><br><span class="muted">saldo ' + m.saldo + "</span></span></li>";
+      }).join("") + "</ul>" : "<div class='empty'>Sin movimientos todavía.</div>");
+  }
+  async function abrirProducto(id) {
+    state.iprod = id || null; state.iMovs = []; render(); window.scrollTo(0, 0);
+    if (!id) return;
+    var r = await sb.from("mekachi_inventario_movimientos").select("*").eq("producto_id", id).order("id", { ascending: false }).limit(40);
+    if (!r.error && state.iprod === id) { state.iMovs = r.data; render(); }
+  }
+  function csvDescarga(nombre, cols, filas) {
+    var cel = function (v) { v = v === true ? "sí" : v === false ? "no" : v == null ? "" : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+    var csv = "\ufeff" + cols.map(function (c) { return cel(c[0]); }).join(",") + "\n" + filas.map(function (r) { return cols.map(function (c) { return cel(r[c[1]]); }).join(","); }).join("\n");
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = nombre + "-" + hoyIso() + ".csv"; a.click(); URL.revokeObjectURL(a.href);
+  }
+  // ---------- Red: talleres y servicios
+  function viewDRed() {
+    return '<div class="chips"><button data-rsub="talleres" aria-pressed="' + (state.rsub === "talleres") + '">Talleres</button><button data-rsub="servicios" aria-pressed="' + (state.rsub === "servicios") + '">Servicios</button></div>' +
+      (state.rsub === "servicios" ? viewDServicios() : viewDTalleres());
+  }
+
   // ---------- Clientes: seguimiento de quienes usan la app y de quienes escriben por WhatsApp
   var ETAPAS = ["Nuevo", "En conversación", "Con solicitud", "Atendido", "Inactivo", "No contactar"];
   statusCls["En conversación"] = "info"; statusCls["Con solicitud"] = "warn"; statusCls.Atendido = "ok"; statusCls.Inactivo = ""; statusCls["No contactar"] = ""; statusCls.Taller = "info"; statusCls.Conductor = "";
@@ -772,10 +852,7 @@
     if (!r.error && state.dcli === k) { state.dCliDet = r.data; render(); }
   }
   function descargarCsv() {
-    var cols = [["Nombre", "nombre"], ["Contacto", "contacto"], ["Tipo", "tipo"], ["Teléfono", "telefono"], ["Correo", "email"], ["En la app", "en_app"], ["En WhatsApp", "en_whatsapp"], ["Etapa", "etapa"], ["Pedidos", "pedidos"], ["Compras", "total_pedidos"], ["Solicitudes", "solicitudes"], ["Citas", "citas"], ["Grúas", "gruas"], ["Última actividad", "ultima"], ["Próximo contacto", "proximo_contacto"], ["Notas", "notas"]];
-    var cel = function (v) { v = v === true ? "sí" : v === false ? "no" : v == null ? "" : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
-    var csv = "\ufeff" + cols.map(function (c) { return cel(c[0]); }).join(",") + "\n" + clientesFiltrados().map(function (r) { return cols.map(function (c) { return cel(r[c[1]]); }).join(","); }).join("\n");
-    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = "mekachi-clientes-" + hoyIso() + ".csv"; a.click(); URL.revokeObjectURL(a.href);
+    csvDescarga("mekachi-clientes", [["Nombre", "nombre"], ["Contacto", "contacto"], ["Tipo", "tipo"], ["Teléfono", "telefono"], ["Correo", "email"], ["En la app", "en_app"], ["En WhatsApp", "en_whatsapp"], ["Etapa", "etapa"], ["Pedidos", "pedidos"], ["Compras", "total_pedidos"], ["Solicitudes", "solicitudes"], ["Citas", "citas"], ["Grúas", "gruas"], ["Última actividad", "ultima"], ["Próximo contacto", "proximo_contacto"], ["Notas", "notas"]], clientesFiltrados());
   }
   function viewDTalleres() {
     // Primero los talleres reales; los de demostración van después, marcados.
@@ -792,7 +869,7 @@
   // =====================================================================
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
-    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-servicios": viewDServicios, "d-talleres": viewDTalleres, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
+    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
   function render() {
     nav();
     if (map) { map.remove(); map = null; }
@@ -828,7 +905,7 @@
     var b = e.target.closest("button"); if (!b || b.disabled) return;
     var d = b.dataset, o;
     if (d.mode) setMode(d.mode);
-    else if (d.go) go(d.go);
+    else if (d.go) { state.iprod = null; state.dcli = null; go(d.go); } // la pestaña siempre abre la lista, no la última ficha
     else if (d.acctab) { state.acc.tab = d.acctab; render(); }
     else if (d.logout) { await sb.auth.signOut(); state.solicitudes = []; state.trabajos = []; state.pedidos = []; state.historial = []; await loadAuth(); state.garaje = store.get("garaje", []); toast("Sesión cerrada"); go(MODES[state.mode].tabs[0][0], true); }
     else if (d.inc) change(d.inc, 1);
@@ -851,6 +928,11 @@
     else if (d.terminar) await done(await call(sb.rpc("mekachi_terminar_solicitud", { p_solicitud: d.terminar })), "Trabajo terminado y registrado.");
     else if (d.rate) await done(await call(sb.rpc("mekachi_calificar", { p_solicitud: d.rate, p_rating: +d.n })), "Gracias por calificar.");
     else if (d.avanzar) await done(await call(sb.rpc("mekachi_despacho_avanzar", { p_pedido: d.avanzar })), "Pedido actualizado.");
+    else if ("inv" in d) await abrirProducto(d.inv);
+    else if (d.ifil) { state.ifil = d.ifil; render(); }
+    else if (d.rsub) { state.rsub = d.rsub; render(); }
+    else if (d.inuevo) { state.inuevo = !state.inuevo; render(); }
+    else if (d.icsv) csvDescarga("mekachi-inventario", [["Código", "codigo"], ["Categoría", "cat"], ["Nombre", "nombre"], ["Compatibilidad", "compat"], ["Existencias", "stock"], ["Mínimo", "minimo"], ["Costo", "costo"], ["Precio", "precio"], ["Proveedor", "proveedor"], ["Ubicación", "ubicacion"], ["Activo", "activo"]], invFiltrado());
     else if ("cli" in d) await abrirCliente(d.cli);
     else if (d.cfil) { state.cfil = d.cfil; render(); }
     else if (d.csv) descargarCsv();
@@ -892,6 +974,7 @@
   document.addEventListener("input", function (e) {
     if (e.target.setCustomValidity) e.target.setCustomValidity("");
     if (e.target.id === "q") { state.q = e.target.value; refreshList(); }
+    else if (e.target.id === "iq") { state.iq = e.target.value; $("#ilist").innerHTML = invListHtml(); }
     else if (e.target.id === "cq") { state.cq = e.target.value; $("#clist").innerHTML = clientesListHtml(); }
     else if (e.target.id === "dq") { state.dq = e.target.value; $("#sintomas").innerHTML = sintListHtml(); }
   });
@@ -960,6 +1043,19 @@
         await done(await call(sb.rpc("mekachi_cotizar", { p_cotizacion: f.dataset.id, p_mano_obra: +f.elements.mano.value, p_repuestos: +f.elements.rep.value, p_nota: f.elements.nota.value.trim() })), "Precio enviado al cliente");
       } else if (kind === "cotizar-linea") {
         await done(await call(sb.rpc("mekachi_despacho_cotizar_item", { p_item: f.dataset.id, p_precio: +f.elements.precio.value })), "Pieza cotizada");
+      } else if (kind === "inv-mover") {
+        var mt = v("m-tipo");
+        if (await call(sb.rpc("mekachi_inventario_mover", { p_producto: state.iprod, p_tipo: mt, p_cantidad: parseInt(v("m-cant"), 10), p_costo: mt === "Entrada" && v("m-costo") ? +v("m-costo") : null, p_motivo: v("m-motivo") }))) { await loadMode(); await loadPublic(); await abrirProducto(state.iprod); toast("Movimiento registrado"); }
+      } else if (kind === "inv-datos") {
+        var okp = await call(sb.from("mekachi_productos").update({ precio: +v("d-precio"), activo: $("#d-activo").checked }).eq("id", state.iprod));
+        var oki = okp && await call(sb.from("mekachi_inventario").upsert({ producto_id: state.iprod, stock_minimo: parseInt(v("d-min"), 10) || 0, costo: +v("d-costo"), proveedor: v("d-prov"), ubicacion: v("d-ubi") }, { onConflict: "producto_id" }));
+        if (oki) { await loadMode(); await loadPublic(); render(); toast("Datos guardados"); }
+      } else if (kind === "inv-nuevo") {
+        var np = await call(sb.from("mekachi_productos").insert({ codigo: v("n-codigo"), categoria: v("n-cat"), nombre: v("n-nombre"), compatibilidad: v("n-compat"), precio: +v("n-precio") }).select().single());
+        if (!np) return;
+        await call(sb.from("mekachi_inventario").upsert({ producto_id: np.id, stock_minimo: parseInt(v("n-min"), 10) || 0, costo: +v("n-costo") }, { onConflict: "producto_id" }));
+        if (parseInt(v("n-stock"), 10) > 0) await call(sb.rpc("mekachi_inventario_mover", { p_producto: np.id, p_tipo: "Entrada", p_cantidad: parseInt(v("n-stock"), 10), p_costo: +v("n-costo"), p_motivo: "Existencias iniciales" }));
+        state.inuevo = false; await loadMode(); await loadPublic(); render(); toast("Repuesto creado");
       } else if (kind === "seguimiento") {
         if (await call(sb.rpc("mekachi_guardar_seguimiento", { p_clave: state.dcli, p_etapa: v("sg-etapa"), p_notas: v("sg-notas"), p_proximo: v("sg-prox") || null }))) { await loadMode(); render(); toast("Seguimiento guardado"); }
       } else if (kind === "wa-responder") {
