@@ -26,17 +26,18 @@
   var MODES = {
     conductor: { label: "Conductor", tabs: [["c-inicio", "Inicio", "home"], ["diag", "Diagnóstico", "pulse"], ["talleres", "Talleres", "pin"], ["solicitudes", "Solicitudes", "list"], ["garaje", "Garaje", "car"]] },
     taller: { label: "Taller", tabs: [["t-inicio", "Inicio", "home"], ["trabajos", "Trabajos", "wrench"], ["catalogo", "Repuestos", "box"], ["pedidos", "Pedidos", "truck"], ["perfil", "Mi taller", "shop"]] },
+    grua: { label: "Grúa", tabs: [["g-inicio", "Inicio", "home"], ["g-servicios", "Servicios", "truck"], ["g-perfil", "Mi grúa", "shop"]] },
     despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-inventario", "Inventario", "box"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"], ["d-red", "Red", "shop"]] }
   };
   var PARENT = { solicitar: "talleres", carrito: "catalogo", grua: "c-inicio" };
   var VIEWMODE = { solicitar: "conductor", carrito: "taller", grua: "conductor" };
   Object.keys(MODES).forEach(function (m) { MODES[m].tabs.forEach(function (t) { VIEWMODE[t[0]] = m; }); });
   var ESTADOS = ["Registrado", "Confirmado", "En camino", "Entregado"];
-  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1, "d-clientes": 1 };
+  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1, "d-clientes": 1, "g-inicio": 1, "g-servicios": 1 };
 
   var state = {
     mode: store.get("rol", null), view: null, loading: false,
-    user: null, perfil: null, miTaller: null, acc: { rol: "conductor", tab: "login", after: null, msg: "" },
+    user: null, perfil: null, miTaller: null, miGrua: null, gSol: [], dProv: [], acc: { rol: "conductor", tab: "login", after: null, msg: "" },
     talleres: [], productos: [],
     dq: "", dcat: "Todos", dsel: null, fesp: "Todas", fzona: "Todas", pos: null, tsel: [], vsel: null, draft: null,
     garaje: store.get("garaje", []), solicitudes: [], historial: [],
@@ -99,14 +100,14 @@
     } catch (e) { local(); }
   }
   async function loadAuth() {
-    state.user = null; state.perfil = null; state.miTaller = null;
+    state.user = null; state.perfil = null; state.miTaller = null; state.miGrua = null;
     if (!sb) return;
     var s = await sb.auth.getSession();
     state.user = s.data && s.data.session ? s.data.session.user : null;
     if (!state.user) return;
     var pend = store.get("pending", null);
     var p = (await sb.from("mekachi_perfiles").select("*").eq("id", state.user.id).maybeSingle()).data;
-    if (!p || (pend && pend.rol === "taller" && p.rol === "conductor")) {
+    if (!p || (pend && pend.rol !== "conductor" && p.rol === "conductor")) {
       var r = pend || { rol: "conductor", nombre: "", telefono: "" };
       p = await call(sb.rpc("mekachi_registrar", { p_rol: r.rol, p_nombre: r.nombre, p_telefono: r.telefono }));
     }
@@ -114,6 +115,9 @@
     var t = (await sb.from("mekachi_talleres").select("*").eq("owner_id", state.user.id).maybeSingle()).data;
     if (!t && pend && pend.taller) t = await call(sb.from("mekachi_talleres").insert(Object.assign({ owner_id: state.user.id }, pend.taller)).select().single());
     state.miTaller = t && t.id ? t : null;
+    var gr = (await sb.from("mekachi_gruas_proveedores").select("*").eq("owner_id", state.user.id).maybeSingle()).data;
+    if (!gr && pend && pend.grua) gr = await call(sb.from("mekachi_gruas_proveedores").insert(Object.assign({ owner_id: state.user.id }, pend.grua)).select().single());
+    state.miGrua = gr && gr.id ? gr : null;
     store.set("pending", null);
     // El garaje de invitado sube a la cuenta la primera vez.
     var local = store.get("garaje", []);
@@ -146,6 +150,11 @@
       if (!r[1].error) state.pedidos = r[1].data;
       var ct = await sb.from("mekachi_citas").select("*").eq("taller_id", state.miTaller.id).order("created_at", { ascending: false });
       if (!ct.error) state.tCitas = ct.data;
+    } else if (state.mode === "grua" && state.miGrua) {
+      var gs = await sb.from("mekachi_gruas_solicitudes").select("*").eq("proveedor_id", state.miGrua.id).order("created_at", { ascending: false }).limit(60);
+      if (!gs.error) state.gSol = gs.data;
+      var me = await sb.from("mekachi_gruas_proveedores").select("*").eq("id", state.miGrua.id).maybeSingle();
+      if (me.data) state.miGrua = me.data;
     } else if (state.mode === "despacho" && esDespacho()) {
       r = await Promise.all([
         sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(*), taller:mekachi_talleres(nombre,direccion,zona,telefono)").order("created_at", { ascending: false }),
@@ -166,6 +175,8 @@
       if (state.dconv) await loadMsgs();
       var iv = await sb.from("mekachi_productos").select("*, inv:mekachi_inventario(*)").order("categoria").order("nombre");
       if (!iv.error) state.dInv = iv.data.map(function (x) { var i = x.inv || {}; return { id: x.id, codigo: x.codigo, cat: x.categoria, nombre: x.nombre, compat: x.compatibilidad, precio: +x.precio, activo: x.activo, demo: x.es_demo, stock: i.stock || 0, minimo: i.stock_minimo || 0, costo: +(i.costo || 0), proveedor: i.proveedor || "", ubicacion: i.ubicacion || "" }; });
+      var pv = await sb.from("mekachi_gruas_proveedores").select("*").order("es_demo").order("nombre");
+      if (!pv.error) state.dProv = pv.data;
       var oc = await sb.from("mekachi_compras").select("*, items:mekachi_compra_items(cantidad,costo_unit,producto:mekachi_productos(nombre,compatibilidad))").order("created_at", { ascending: false }).limit(40);
       if (!oc.error) state.dCompras = oc.data;
       var cl = await sb.rpc("mekachi_clientes");
@@ -192,6 +203,7 @@
     if (v === "d-pedidos") return count(state.dPedidos, function (o) { return o.estado !== "Entregado"; });
     if (v === "d-atencion") return count(state.dConvs, function (c) { return c.requiere_humano; }) + count(state.dGruas, gruaActiva) + count(state.dCitas, function (c) { return c.estado === "Pendiente"; });
     if (v === "d-clientes") return count(state.dClientes, porSeguir);
+    if (v === "g-servicios") return count(state.gSol, function (g) { return g.estado === "Asignada"; });
     if (v === "d-inventario") return count(state.dInv, bajoMinimo);
     if (v === "d-red") return count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; });
     return 0;
@@ -215,6 +227,7 @@
   function guard(v) {
     var m = VIEWMODE[v];
     if (m === "taller" && !(state.user && (state.miTaller || v === "perfil"))) return "taller";
+    if (m === "grua" && !(state.user && (state.miGrua || v === "g-perfil"))) return "grua";
     if (m === "despacho" && !esDespacho()) return "despacho";
     return null;
   }
@@ -222,7 +235,8 @@
     if (VIEWMODE[v]) state.mode = VIEWMODE[v];
     var need = guard(v);
     if (need === "taller" && state.user) { v = "perfil"; need = null; toast("Completa los datos de tu taller para continuar."); }
-    if (need) { state.acc = { rol: need, tab: state.user ? "login" : (need === "taller" ? "registro" : "login"), after: v, msg: "" }; v = "acceso"; }
+    if (need === "grua" && state.user) { v = "g-perfil"; need = null; toast("Completa los datos de tu servicio de grúa para continuar."); }
+    if (need) { state.acc = { rol: need, tab: state.user ? "login" : (need === "despacho" ? "login" : "registro"), after: v, msg: "" }; v = "acceso"; }
     if (v === "cuenta" && !state.user && state.view !== "cuenta") state.acc = { rol: "conductor", tab: "registro", after: MODES[state.mode].tabs[0][0], msg: "" };
     state.view = v; render(); window.scrollTo(0, 0);
     var h = "#/" + v;
@@ -251,16 +265,21 @@
       '<div class="roles">' +
       role("conductor", "car", "Soy conductor", "Diagnostica tu auto y encuentra un taller. Sin registro.") +
       role("taller", "wrench", "Soy taller", "Registra tu taller, recibe clientes y pide repuestos") +
-      role("despacho", "truck", "Soy Mekachi", "Despacho: pedidos, cotizaciones y talleres") +
+      role("grua", "truck", "Tengo una grúa", "Recibe solicitudes de auxilio en tu zona") +
+      role("despacho", "chart", "Soy Mekachi", "Despacho: pedidos, inventario, atención y clientes") +
       '</div><p class="foot">Puedes cambiar de perfil en cualquier momento.</p></div></div>';
   }
   function viewAcceso() {
     var a = state.acc, reg = a.tab === "registro" && a.rol !== "despacho";
-    var titulo = a.rol === "taller" ? (reg ? "Registra tu taller" : "Entra a tu taller") : a.rol === "despacho" ? "Acceso de despacho" : (reg ? "Crea tu cuenta" : "Inicia sesión");
-    var intro = a.msg || (a.rol === "taller" ? "Con tu cuenta recibes solicitudes de conductores y pides repuestos." : a.rol === "despacho" ? "Solo para el equipo de Mekachi." : "Con tu cuenta guardas tus autos, tus solicitudes y el historial de servicios.");
+    var titulo = a.rol === "grua" ? (reg ? "Registra tu servicio de grúa" : "Entra a tu cuenta de grúa") : a.rol === "taller" ? (reg ? "Registra tu taller" : "Entra a tu taller") : a.rol === "despacho" ? "Acceso de despacho" : (reg ? "Crea tu cuenta" : "Inicia sesión");
+    var intro = a.msg || (a.rol === "grua" ? "Con tu cuenta recibes solicitudes de grúa de conductores y talleres de tu zona." : a.rol === "taller" ? "Con tu cuenta recibes solicitudes de conductores y pides repuestos." : a.rol === "despacho" ? "Solo para el equipo de Mekachi." : "Con tu cuenta guardas tus autos, tus solicitudes y el historial de servicios.");
     if (state.user && a.rol === "despacho") return "<h1>Acceso de despacho</h1><div class='notice'>Tu cuenta no tiene permiso de despacho. Pide al administrador de Mekachi que la habilite.</div><button class='btn' data-logout='1'>Cerrar sesión</button>";
     var extra = "";
     if (reg && a.rol === "conductor") extra = field("r-nombre", "Tu nombre", "required autocomplete=name", "") + field("r-tel", "Teléfono", TEL + " required", "");
+    if (reg && a.rol === "grua") extra = field("r-grua", "Nombre del servicio o empresa", "required", "") +
+      '<div class="row">' + field("r-nombre", "Persona de contacto", "required", "") + field("r-tel", "Teléfono o WhatsApp", TEL + " required", "") + "</div>" +
+      '<div class="row"><div class="field"><label for="r-zona">Zona principal</label><select id="r-zona">' + opts(CFG.zonas) + "</select></div>" + field("r-tarifa", "Tarifa base $", 'type="number" min="1" step="0.5" required', "") + "</div>" +
+      '<div class="field"><label>Vehículos que puedes llevar</label><div class="checks">' + ["Auto", "SUV", "Camioneta", "Moto"].map(function (e) { return '<label><input type="checkbox" name="esp" value="' + e + '"' + (e === "Auto" ? " checked" : "") + "> " + e + "</label>"; }).join("") + "</div></div>";
     if (reg && a.rol === "taller") extra = field("r-taller", "Nombre del taller", "required", "") +
       '<div class="row">' + field("r-nombre", "Persona de contacto", "required", "") + field("r-tel", "Teléfono o WhatsApp", TEL + " required", "") + "</div>" +
       field("r-dir", "Dirección", 'required placeholder="Calle, número y referencia"', "") +
@@ -268,18 +287,18 @@
       '<div class="field"><label for="r-zona">Zona de Quito</label><select id="r-zona">' + opts(CFG.zonas) + "</select></div></div>" +
       '<div class="field"><label>Especialidades</label><div class="checks">' + ESP.map(function (e) { return '<label><input type="checkbox" name="esp" value="' + esc(e) + '"> ' + esc(e) + "</label>"; }).join("") + "</div></div>";
     return "<h1>" + titulo + "</h1><p class='muted'>" + esc(intro) + "</p>" +
-      (a.rol !== "despacho" ? '<div class="chips"><button data-acctab="login" aria-pressed="' + !reg + '">Ya tengo cuenta</button><button data-acctab="registro" aria-pressed="' + reg + '">' + (a.rol === "taller" ? "Registrar taller" : "Crear cuenta") + "</button></div>" : "") +
+      (a.rol !== "despacho" ? '<div class="chips"><button data-acctab="login" aria-pressed="' + !reg + '">Ya tengo cuenta</button><button data-acctab="registro" aria-pressed="' + reg + '">' + (a.rol === "taller" ? "Registrar taller" : a.rol === "grua" ? "Registrar grúa" : "Crear cuenta") + "</button></div>" : "") +
       '<form class="card" data-form="' + (reg ? "registro" : "login") + '">' + extra +
       field("a-email", "Correo", 'type="email" required autocomplete="email" data-msg="Escribe un correo válido"', "") +
       field("a-pass", "Contraseña", 'type="password" required minlength="6" autocomplete="' + (reg ? "new-password" : "current-password") + '" data-msg="Mínimo 6 caracteres"', "") +
-      '<button class="btn primary block">' + (reg ? (a.rol === "taller" ? "Registrar taller" : "Crear cuenta") : "Entrar") + "</button></form>" +
+      '<button class="btn primary block">' + (reg ? (a.rol === "taller" ? "Registrar taller" : a.rol === "grua" ? "Registrar grúa" : "Crear cuenta") : "Entrar") + "</button></form>" +
       (a.rol === "conductor" ? '<button class="back" data-go="c-inicio">Seguir sin cuenta</button>' : "");
   }
   function viewCuenta() {
     if (!state.user) return viewAcceso() + acercaHtml();
     var p = state.perfil || {};
     return "<h1>Mi cuenta</h1>" +
-      '<div class="card"><h2>' + esc(p.nombre || "Sin nombre") + '</h2><p class="muted small">' + esc(state.user.email || "") + " · " + esc(p.rol === "taller" ? "Taller" : p.rol === "despacho" ? "Despacho Mekachi" : "Conductor") + "</p>" +
+      '<div class="card"><h2>' + esc(p.nombre || "Sin nombre") + '</h2><p class="muted small">' + esc(state.user.email || "") + " · " + esc(p.rol === "grua" ? "Grúa" : p.rol === "taller" ? "Taller" : p.rol === "despacho" ? "Despacho Mekachi" : "Conductor") + "</p>" +
       '<form data-form="micuenta"><div class="row">' + field("c-nombre", "Nombre", "required", p.nombre) + field("c-tel", "Teléfono", TEL, p.telefono) + "</div>" +
       '<div class="actions"><button class="btn sm primary">Guardar</button><button type="button" class="btn sm" data-logout="1">Cerrar sesión</button></div></form></div>' + acercaHtml();
   }
@@ -718,6 +737,7 @@
       return '<div class="card"><div class="head"><div><h2>' + esc(g.num) + " · " + esc(g.tipo_vehiculo) + '</h2><div class="muted small">' + fecha(g.created_at) + " · " + esc(g.nombre) + " · " + esc(g.telefono) + "</div></div><span>" + (g.es_demo ? chip("Demo") + " " : "") + chip(g.estado) + "</span></div>" +
         '<p class="small"><b>Recoger en:</b> ' + esc(g.ubicacion) + (g.lat != null ? ' · <a target="_blank" rel="noopener" href="https://maps.google.com/?q=' + g.lat + "," + g.lng + '">Ver en el mapa</a>' : "") + "<br><b>Llevar a:</b> " + esc(g.destino) +
         "<br><b>Proveedor:</b> " + esc(g.proveedor ? g.proveedor.nombre : "Sin asignar") + (g.estimado_min ? " · " + g.estimado_min + " min · " + usd(g.estimado_precio) : "") + "</p>" +
+        (g.estado === "Solicitada" || g.estado === "Asignada" ? '<form class="inline" data-form="asignar-grua" data-id="' + g.id + '" style="margin-bottom:8px"><select name="prov" aria-label="Proveedor">' + state.dProv.filter(function (x) { return x.activo; }).map(function (x) { return '<option value="' + x.id + '"' + (x.id === g.proveedor_id ? " selected" : "") + ">" + esc(x.nombre + " · " + x.zona) + "</option>"; }).join("") + '</select><button class="btn sm">' + (g.proveedor_id ? "Reasignar" : "Asignar") + "</button></form>" : "") +
         (sig ? '<div class="actions"><button class="btn sm primary" data-grua="' + g.id + '" data-e="' + sig + '">Marcar como ' + sig.toLowerCase() + '</button><button class="btn sm" data-grua="' + g.id + '" data-e="Cancelada">Cancelar</button></div>' : "") + "</div>";
     }).join("") : "<div class='empty'>Todavía no hay solicitudes de grúa.</div>");
     if (state.dsub === "citas") return head + (state.dCitas.length ? state.dCitas.map(function (c) {
@@ -852,10 +872,51 @@
     var csv = "\ufeff" + cols.map(function (c) { return cel(c[0]); }).join(",") + "\n" + filas.map(function (r) { return cols.map(function (c) { return cel(r[c[1]]); }).join(","); }).join("\n");
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = nombre + "-" + hoyIso() + ".csv"; a.click(); URL.revokeObjectURL(a.href);
   }
+  // ---------- Perfil de proveedor de grúa
+  function viewGInicio() {
+    var g = state.miGrua, s = state.gSol;
+    var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; };
+    var cobrado = s.filter(function (x) { return x.estado === "Completada"; }).reduce(function (n, x) { return n + +(x.precio_final || x.estimado_precio || 0); }, 0);
+    return "<h1>" + esc(g.nombre) + " " + chip(g.verificado ? "Verificado" : "Por verificar") + "</h1><p class='muted small'>" + esc(g.zona) + " · tarifa base " + usd(g.tarifa_base) + (g.es_demo ? " · proveedor de demostración" : "") + "</p>" +
+      (g.verificado ? '<div class="card"><div class="head"><div><h2>' + (g.activo ? "Estás disponible" : "No estás recibiendo solicitudes") + '</h2><p class="muted small" style="margin:0">' + (g.activo ? "Mekachi te asigna las solicitudes de tu zona." : "Actívate cuando puedas atender.") + '</p></div><button class="btn sm ' + (g.activo ? "" : "primary") + '" data-gdisp="' + (g.activo ? "0" : "1") + '">' + (g.activo ? "Pausar" : "Activarme") + "</button></div></div>"
+        : '<div class="notice">Tu servicio está registrado. Empezarás a recibir solicitudes cuando Mekachi lo verifique.</div>') +
+      '<div class="kpis">' + k(count(s, function (x) { return x.estado === "Asignada"; }), "Por aceptar") + k(count(s, function (x) { return x.estado === "En camino"; }), "En curso") + k(count(s, function (x) { return x.estado === "Completada"; }), "Completadas") + k(usd(cobrado), "Cobrado") + "</div>" +
+      '<button class="btn primary" data-go="g-servicios">Ver solicitudes</button>';
+  }
+  function viewGServicios() {
+    if (!state.gSol.length) return "<h1>Servicios</h1><div class='empty'>" + (state.loading ? "Cargando…" : "Aquí llegan las solicitudes de grúa que Mekachi te asigne.") + "</div>";
+    return "<h1>Servicios</h1><p class='muted small'>Acepta la solicitud antes de salir y márcala completada al entregar el vehículo.</p>" + state.gSol.map(function (g) {
+      var act = "";
+      if (g.estado === "Asignada") act = '<div class="actions"><button class="btn sm primary" data-gresp="' + g.id + '" data-acc="aceptar">Aceptar y salir</button><button class="btn sm" data-gresp="' + g.id + '" data-acc="rechazar">No puedo atenderla</button></div>';
+      if (g.estado === "En camino") act = '<form class="inline" data-form="grua-completar" data-id="' + g.id + '"><input name="precio" type="number" min="0" step="0.5" placeholder="Cobrado $" aria-label="Valor cobrado" value="' + (g.estimado_precio || "") + '"><button class="btn sm primary">Marcar completada</button></form>';
+      if (g.estado === "Completada") act = '<p class="small">Cobrado: <b>' + usd(g.precio_final || g.estimado_precio) + "</b></p>";
+      return '<div class="card"><div class="head"><div><h2>' + esc(g.num) + " · " + esc(g.tipo_vehiculo) + '</h2><div class="muted small">' + fecha(g.created_at) + (g.es_demo ? " · demostración" : "") + "</div></div>" + chip(g.estado) + "</div>" +
+        '<p class="small"><b>Recoger en:</b> ' + esc(g.ubicacion) + (g.lat != null ? ' · <a target="_blank" rel="noopener" href="https://maps.google.com/?q=' + g.lat + "," + g.lng + '">Abrir en el mapa</a>' : "") + "<br><b>Llevar a:</b> " + esc(g.destino || "por definir") +
+        "<br><b>Contacto:</b> " + esc(g.nombre) + (g.telefono ? " · " + esc(g.telefono) + ' · <a target="_blank" rel="noopener" href="https://wa.me/' + esc(waNum(g.telefono)) + '">WhatsApp</a>' : "") + "</p>" + act + "</div>";
+    }).join("");
+  }
+  function viewGPerfil() {
+    var g = state.miGrua || {}, p = state.perfil || {};
+    return "<h1>Mi grúa</h1><p class='muted small'>Con estos datos Mekachi decide qué solicitudes asignarte.</p><form class='card' data-form='g-perfil'>" +
+      field("gp-nombre", "Nombre del servicio o empresa", "required", g.nombre) +
+      '<div class="row">' + field("gp-contacto", "Persona de contacto", "", g.contacto || p.nombre) + field("gp-tel", "Teléfono", TEL + " required", g.telefono || p.telefono) + "</div>" +
+      '<div class="row">' + field("gp-wa", "WhatsApp para avisos", TEL, g.whatsapp) + '<div class="field"><label for="gp-zona">Zona principal</label><select id="gp-zona">' + opts(CFG.zonas, g.zona) + "</select></div></div>" +
+      '<div class="row">' + field("gp-tarifa", "Tarifa base $", 'type="number" min="1" step="0.5" required', g.tarifa_base) + field("gp-min", "Minutos habituales de llegada", 'type="number" min="5" step="5" required', g.minutos_estimados || 30) + "</div>" +
+      '<div class="field"><label>Vehículos que puedes llevar</label><div class="checks">' + ["Auto", "SUV", "Camioneta", "Moto"].map(function (e) { return '<label><input type="checkbox" name="esp" value="' + e + '"' + ((g.tipos || ["Auto"]).indexOf(e) >= 0 ? " checked" : "") + "> " + e + "</label>"; }).join("") + "</div></div>" +
+      '<button class="btn primary block">Guardar</button></form>';
+  }
+  function viewDProveedores() {
+    return "<h1>Proveedores de grúa</h1><p class='muted small'>Solo los verificados y disponibles reciben solicitudes.</p>" + (state.dProv.length ? state.dProv.map(function (x) {
+      return '<div class="card"><div class="head"><div><h2>' + esc(x.nombre) + '</h2><div class="muted small">' + esc(x.zona) + " · " + esc((x.tipos || []).join(", ")) + " · tarifa " + usd(x.tarifa_base) + " · " + x.minutos_estimados + " min<br>" + esc([x.contacto, x.telefono || x.whatsapp].filter(Boolean).join(" · ")) + "</div></div><span>" + (x.es_demo ? chip("Demo") + " " : "") + chip(x.verificado ? (x.activo ? "Verificado" : "En pausa") : "Por verificar") + "</span></div>" +
+        (x.es_demo ? "" : '<div class="actions"><button class="btn sm ' + (x.verificado ? "" : "primary") + '" data-verifgrua="' + x.id + '" data-v="' + (x.verificado ? "0" : "1") + '">' + (x.verificado ? "Quitar verificación" : "Verificar proveedor") + "</button></div>") + "</div>";
+    }).join("") : "<div class='empty'>Todavía no hay proveedores de grúa.</div>");
+  }
+  statusCls["En pausa"] = "";
+
   // ---------- Red: talleres y servicios
   function viewDRed() {
-    return '<div class="chips"><button data-rsub="talleres" aria-pressed="' + (state.rsub === "talleres") + '">Talleres</button><button data-rsub="servicios" aria-pressed="' + (state.rsub === "servicios") + '">Servicios</button></div>' +
-      (state.rsub === "servicios" ? viewDServicios() : viewDTalleres());
+    return '<div class="chips"><button data-rsub="talleres" aria-pressed="' + (state.rsub === "talleres") + '">Talleres</button><button data-rsub="servicios" aria-pressed="' + (state.rsub === "servicios") + '">Servicios</button><button data-rsub="gruas" aria-pressed="' + (state.rsub === "gruas") + '">Grúas' + (count(state.dProv, function (x) { return !x.verificado; }) ? " · " + count(state.dProv, function (x) { return !x.verificado; }) : "") + "</button></div>" +
+      (state.rsub === "servicios" ? viewDServicios() : state.rsub === "gruas" ? viewDProveedores() : viewDTalleres());
   }
 
   // ---------- Clientes: seguimiento de quienes usan la app y de quienes escriben por WhatsApp
@@ -941,7 +1002,7 @@
   // =====================================================================
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
-    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
+    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "g-inicio": viewGInicio, "g-servicios": viewGServicios, "g-perfil": viewGPerfil, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
   function render() {
     nav();
     if (map) { map.remove(); map = null; }
@@ -966,6 +1027,7 @@
     await loadAuth(); await loadPublic(); await loadMode();
     var a = state.acc, dest = a.after || MODES[state.mode].tabs[0][0];
     if (a.rol === "taller" && state.user && !state.miTaller) dest = "perfil";
+    if (a.rol === "grua" && state.user && !state.miGrua) dest = "g-perfil";
     state.loading = false;
     go(dest, true);
   }
@@ -979,7 +1041,7 @@
     if (d.mode) setMode(d.mode);
     else if (d.go) { state.iprod = null; state.dcli = null; go(d.go); } // la pestaña siempre abre la lista, no la última ficha
     else if (d.acctab) { state.acc.tab = d.acctab; render(); }
-    else if (d.logout) { await sb.auth.signOut(); state.solicitudes = []; state.trabajos = []; state.pedidos = []; state.historial = []; await loadAuth(); state.garaje = store.get("garaje", []); toast("Sesión cerrada"); go(MODES[state.mode].tabs[0][0], true); }
+    else if (d.logout) { await sb.auth.signOut(); state.solicitudes = []; state.trabajos = []; state.pedidos = []; state.historial = []; state.gSol = []; state.misGruas = []; await loadAuth(); state.garaje = store.get("garaje", []); toast("Sesión cerrada"); go(MODES[state.mode].tabs[0][0], true); }
     else if (d.inc) change(d.inc, 1);
     else if (d.dec) change(d.dec, -1);
     else if (d.cat) { state.cat = d.cat; render(); }
@@ -1000,6 +1062,9 @@
     else if (d.terminar) await done(await call(sb.rpc("mekachi_terminar_solicitud", { p_solicitud: d.terminar })), "Trabajo terminado y registrado.");
     else if (d.rate) await done(await call(sb.rpc("mekachi_calificar", { p_solicitud: d.rate, p_rating: +d.n })), "Gracias por calificar.");
     else if (d.avanzar) await done(await call(sb.rpc("mekachi_despacho_avanzar", { p_pedido: d.avanzar })), "Pedido actualizado.");
+    else if (d.gresp) { if (d.acc !== "rechazar" || window.confirm("¿Devolver esta solicitud a Mekachi para que la reasigne?")) await done(await call(sb.rpc("mekachi_grua_responder", { p_solicitud: d.gresp, p_accion: d.acc })), d.acc === "aceptar" ? "Solicitud aceptada. Buen viaje." : "Solicitud devuelta a Mekachi."); }
+    else if (d.gdisp) await done(await call(sb.from("mekachi_gruas_proveedores").update({ activo: d.gdisp === "1" }).eq("id", state.miGrua.id)), d.gdisp === "1" ? "Estás disponible." : "Quedaste en pausa.");
+    else if (d.verifgrua) await done(await call(sb.from("mekachi_gruas_proveedores").update({ verificado: d.v === "1", activo: d.v === "1" }).eq("id", d.verifgrua)), d.v === "1" ? "Proveedor verificado." : "Verificación retirada.");
     else if (d.isub) { state.isub = d.isub; state.oc = null; render(); }
     else if (d.ocsug) { state.oc = { proveedor: "", nota: "Reposición de mínimos", items: state.dInv.filter(function (x) { return x.activo && x.stock <= x.minimo; }).map(function (x) { return { id: x.id, cantidad: Math.max(x.minimo * 2 - x.stock, 1), costo: x.costo }; }) }; render(); }
     else if (d.ocnew) { state.oc = { proveedor: "", nota: "", items: [] }; render(); }
@@ -1085,6 +1150,10 @@
         if (await call(sb.auth.signInWithPassword({ email: v("a-email"), password: v("a-pass") }))) await afterAuth();
       } else if (kind === "registro") {
         var a = state.acc, pend = { rol: a.rol, nombre: v("r-nombre"), telefono: v("r-tel") };
+        if (a.rol === "grua") {
+          if (!checks().length) return toast("Elige al menos un tipo de vehículo.");
+          pend.grua = { nombre: v("r-grua"), contacto: v("r-nombre"), telefono: v("r-tel"), whatsapp: v("r-tel"), zona: v("r-zona"), tipos: checks(), tarifa_base: +v("r-tarifa") || 0 };
+        }
         if (a.rol === "taller") {
           if (!checks().length) return toast("Elige al menos una especialidad.");
           pend.taller = { nombre: v("r-taller"), contacto: v("r-nombre"), telefono: v("r-tel"), whatsapp: v("r-tel"), direccion: v("r-dir"), sector: v("r-sector"), zona: v("r-zona"), especialidades: checks() };
@@ -1100,7 +1169,7 @@
         if (r.session) await afterAuth();
         else { state.acc.tab = "login"; state.acc.msg = "Te enviamos un correo para confirmar tu cuenta. Ábrelo, confirma y luego inicia sesión aquí."; render(); }
       } else if (kind === "micuenta") {
-        var p = await call(sb.rpc("mekachi_registrar", { p_rol: state.perfil && state.perfil.rol === "taller" ? "taller" : "conductor", p_nombre: v("c-nombre"), p_telefono: v("c-tel") }));
+        var p = await call(sb.rpc("mekachi_registrar", { p_rol: state.perfil && (state.perfil.rol === "taller" || state.perfil.rol === "grua") ? state.perfil.rol : "conductor", p_nombre: v("c-nombre"), p_telefono: v("c-tel") }));
         if (p) { state.perfil = p; render(); toast("Datos guardados"); }
       } else if (kind === "perfil") {
         var row = { nombre: v("t-nombre"), contacto: v("t-contacto"), telefono: v("t-tel"), whatsapp: v("t-wa"), horario: v("t-horario"), direccion: v("t-dir"), sector: v("t-sector"), zona: v("t-zona"), especialidades: checks(), lat: v("t-lat") ? +v("t-lat") : null, lng: v("t-lng") ? +v("t-lng") : null };
@@ -1126,6 +1195,18 @@
         await done(await call(sb.rpc("mekachi_cotizar", { p_cotizacion: f.dataset.id, p_mano_obra: +f.elements.mano.value, p_repuestos: +f.elements.rep.value, p_nota: f.elements.nota.value.trim() })), "Precio enviado al cliente");
       } else if (kind === "cotizar-linea") {
         await done(await call(sb.rpc("mekachi_despacho_cotizar_item", { p_item: f.dataset.id, p_precio: +f.elements.precio.value })), "Pieza cotizada");
+      } else if (kind === "grua-completar") {
+        await done(await call(sb.rpc("mekachi_grua_responder", { p_solicitud: f.dataset.id, p_accion: "completar", p_precio: +f.elements.precio.value || null })), "Servicio completado.");
+      } else if (kind === "asignar-grua") {
+        var pr = byId(state.dProv, f.elements.prov.value);
+        if (pr) await done(await call(sb.from("mekachi_gruas_solicitudes").update({ proveedor_id: pr.id, estado: "Asignada", estimado_min: pr.minutos_estimados, estimado_precio: pr.tarifa_base }).eq("id", f.dataset.id)), "Grúa asignada a " + pr.nombre + ".");
+      } else if (kind === "g-perfil") {
+        if (!checks().length) return toast("Elige al menos un tipo de vehículo.");
+        var grow = { nombre: v("gp-nombre"), contacto: v("gp-contacto"), telefono: v("gp-tel"), whatsapp: v("gp-wa"), zona: v("gp-zona"), tarifa_base: +v("gp-tarifa") || 0, minutos_estimados: parseInt(v("gp-min"), 10) || 30, tipos: checks() };
+        var gsv = state.miGrua
+          ? await call(sb.from("mekachi_gruas_proveedores").update(grow).eq("id", state.miGrua.id).select().single())
+          : await call(sb.from("mekachi_gruas_proveedores").insert(Object.assign({ owner_id: state.user.id }, grow)).select().single());
+        if (gsv && gsv.id) { state.miGrua = gsv; render(); toast("Datos guardados"); }
       } else if (kind === "oc") {
         syncOc();
         if (!state.oc.items.length) return toast("Agrega al menos un repuesto.");

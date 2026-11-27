@@ -230,3 +230,8 @@ h1 .status { vertical-align: middle; font-family: var(--font); }
 .ocrow input { padding: 8px 8px; }
 .ocrow .btn.sm { padding: 7px 10px; }
 @media (max-width: 480px) { .ocrow { grid-template-columns: 1fr 64px 78px auto; } .ocrow.two { grid-template-columns: 1fr 78px; } }
+
+/* Cuatro perfiles en el selector */
+@media (max-width: 859px) { .topbar .seg button { font-size: .74rem; padding: 6px 7px; } .topbar { gap: 6px; padding-left: 10px; padding-right: 10px; } }
+@media (max-width: 480px) { .topbar .logo span { display: none; } }
+.side .seg { flex-wrap: wrap; border-radius: 14px; } .side .seg button { flex: 1 1 45%; }
