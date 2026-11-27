@@ -786,8 +786,13 @@
           pend.taller = { nombre: v("r-taller"), contacto: v("r-nombre"), telefono: v("r-tel"), whatsapp: v("r-tel"), direccion: v("r-dir"), sector: v("r-sector"), zona: v("r-zona"), especialidades: checks() };
         }
         store.set("pending", pend);
-        var r = await call(sb.auth.signUp({ email: v("a-email"), password: v("a-pass") }));
+        var r = await call(sb.auth.signUp({ email: v("a-email"), password: v("a-pass"), options: { emailRedirectTo: location.origin + location.pathname } }));
         if (!r) return;
+        // Supabase no avisa con un error cuando el correo ya existe: devuelve un usuario sin identidades.
+        if (r.user && r.user.identities && !r.user.identities.length) {
+          state.acc.tab = "login"; state.acc.msg = "Ese correo ya tiene una cuenta. Entra con la contraseña que ya usas con ese correo, o regístrate con otro correo."; render(); window.scrollTo(0, 0);
+          return;
+        }
         if (r.session) await afterAuth();
         else { state.acc.tab = "login"; state.acc.msg = "Te enviamos un correo para confirmar tu cuenta. Ábrelo, confirma y luego inicia sesión aquí."; render(); }
       } else if (kind === "micuenta") {
