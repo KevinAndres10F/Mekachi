@@ -26,13 +26,13 @@
   var MODES = {
     conductor: { label: "Conductor", tabs: [["c-inicio", "Inicio", "home"], ["diag", "Diagnóstico", "pulse"], ["talleres", "Talleres", "pin"], ["solicitudes", "Solicitudes", "list"], ["garaje", "Garaje", "car"]] },
     taller: { label: "Taller", tabs: [["t-inicio", "Inicio", "home"], ["trabajos", "Trabajos", "wrench"], ["catalogo", "Repuestos", "box"], ["pedidos", "Pedidos", "truck"], ["perfil", "Mi taller", "shop"]] },
-    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-servicios", "Servicios", "wrench"], ["d-talleres", "Talleres", "shop"], ["d-atencion", "Atención", "chat"]] }
+    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-servicios", "Servicios", "wrench"], ["d-talleres", "Talleres", "shop"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"]] }
   };
   var PARENT = { solicitar: "talleres", carrito: "catalogo" };
   var VIEWMODE = { solicitar: "conductor", carrito: "taller" };
   Object.keys(MODES).forEach(function (m) { MODES[m].tabs.forEach(function (t) { VIEWMODE[t[0]] = m; }); });
   var ESTADOS = ["Registrado", "Confirmado", "En camino", "Entregado"];
-  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1 };
+  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1, "d-clientes": 1 };
 
   var state = {
     mode: store.get("rol", null), view: null, loading: false,
@@ -41,7 +41,7 @@
     dq: "", dcat: "Todos", dsel: null, fesp: "Todas", fzona: "Todas", pos: null, tsel: [], vsel: null, draft: null,
     garaje: store.get("garaje", []), solicitudes: [], historial: [],
     q: "", cat: "Todas", sug: null, cart: store.get("cart", []), trabajos: [], pedidos: [],
-    dPedidos: [], dSolicitudes: [], dTalleres: [], dConvs: [], dMsgs: [], dGruas: [], dCitas: [], dsub: "conv", dconv: null, tCitas: []
+    dPedidos: [], dSolicitudes: [], dTalleres: [], dConvs: [], dMsgs: [], dGruas: [], dCitas: [], dsub: "conv", dconv: null, tCitas: [], dClientes: [], dcli: null, dCliDet: null, cfil: "todos", cq: ""
   };
 
   var $ = function (s) { return document.querySelector(s); };
@@ -162,6 +162,8 @@
       if (!a[1].error) state.dGruas = a[1].data;
       if (!a[2].error) state.dCitas = a[2].data;
       if (state.dconv) await loadMsgs();
+      var cl = await sb.rpc("mekachi_clientes");
+      if (!cl.error) state.dClientes = cl.data || [];
     }
   }
   async function loadMsgs() {
@@ -183,6 +185,7 @@
     if (v === "solicitudes") return count(state.solicitudes, function (o) { return o.estado === "Cotizada"; });
     if (v === "d-pedidos") return count(state.dPedidos, function (o) { return o.estado !== "Entregado"; });
     if (v === "d-atencion") return count(state.dConvs, function (c) { return c.requiere_humano; }) + count(state.dGruas, gruaActiva) + count(state.dCitas, function (c) { return c.estado === "Pendiente"; });
+    if (v === "d-clientes") return count(state.dClientes, porSeguir);
     if (v === "d-talleres") return count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; });
     return 0;
   }
@@ -703,6 +706,77 @@
       return '<button class="sint" data-conv="' + c.id + '"><span><b>' + esc(c.nombre || "Sin nombre") + " · …" + esc(c.telefono.slice(-4)) + "</b><small>" + fecha(c.updated_at) + (c.motivo_humano ? " · " + esc(c.motivo_humano) : "") + "</small></span>" + chip(c.requiere_humano ? "Espera a una persona" : "Con el asistente") + "</button>";
     }).join("") : "<div class='empty'>Todavía no hay conversaciones.</div>");
   }
+  // ---------- Clientes: seguimiento de quienes usan la app y de quienes escriben por WhatsApp
+  var ETAPAS = ["Nuevo", "En conversación", "Con solicitud", "Atendido", "Inactivo", "No contactar"];
+  statusCls["En conversación"] = "info"; statusCls["Con solicitud"] = "warn"; statusCls.Atendido = "ok"; statusCls.Inactivo = ""; statusCls["No contactar"] = ""; statusCls.Taller = "info"; statusCls.Conductor = "";
+  var hoyIso = function () { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  var porSeguir = function (c) { return c.proximo_contacto && c.proximo_contacto <= hoyIso() && c.etapa !== "No contactar"; };
+  var canales = function (c) { return [c.en_app ? "App" : "", c.en_whatsapp ? "WhatsApp" : ""].filter(Boolean).join(" y ") || "Sin canal"; };
+  var CFILTROS = [["todos", "Todos", function () { return true; }], ["seguir", "Seguimiento hoy", porSeguir], ["conductor", "Conductores", function (c) { return c.tipo === "conductor"; }],
+    ["taller", "Talleres", function (c) { return c.tipo === "taller"; }], ["wa", "Solo WhatsApp", function (c) { return c.en_whatsapp && !c.en_app; }], ["inactivo", "Inactivos", function (c) { return c.etapa === "Inactivo"; }]];
+  function clientesFiltrados() {
+    var f = CFILTROS.filter(function (x) { return x[0] === state.cfil; })[0][2], q = norm(state.cq.trim());
+    return state.dClientes.filter(function (c) { return f(c) && (!q || norm(c.nombre + " " + (c.contacto || "") + " " + c.telefono + " " + (c.email || "")).indexOf(q) >= 0); });
+  }
+  function resumenCliente(c) {
+    var r = [];
+    if (c.pedidos) r.push(c.pedidos + (c.pedidos === 1 ? " pedido" : " pedidos") + " · " + usd(c.total_pedidos));
+    if (c.solicitudes) r.push(c.solicitudes + (c.solicitudes === 1 ? " solicitud" : " solicitudes"));
+    if (c.citas) r.push(c.citas + (c.citas === 1 ? " cita" : " citas"));
+    if (c.gruas) r.push(c.gruas + (c.gruas === 1 ? " grúa" : " grúas"));
+    if (c.mensajes) r.push(c.mensajes + " mensajes");
+    return r.join(" · ") || "Sin actividad todavía";
+  }
+  function clientesListHtml() {
+    var list = clientesFiltrados();
+    if (!list.length) return "<div class='empty'>" + (state.loading ? "Cargando…" : "No hay clientes con ese filtro.") + "</div>";
+    return list.map(function (c) {
+      return '<button class="sint" data-cli="' + esc(c.k) + '"><span><b>' + esc(c.nombre) + (c.demo ? " (demo)" : "") + "</b><small>" + (c.tipo === "taller" ? "Taller" : "Conductor") + " · " + canales(c) + " · " + esc(resumenCliente(c)) +
+        (c.ultima ? "<br>Última actividad: " + fecha(c.ultima) : "") + (c.proximo_contacto ? " · Próximo contacto: " + esc(c.proximo_contacto) : "") + "</small></span>" + chip(c.etapa) + "</button>";
+    }).join("");
+  }
+  function viewDClientes() {
+    var all = state.dClientes, c = state.dcli ? all.filter(function (x) { return x.k === state.dcli; })[0] : null;
+    if (c) return viewCliente(c);
+    var semana = new Date(Date.now() - 7 * 864e5).toISOString();
+    var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; };
+    return "<h1>Clientes</h1><p class='muted small'>Conductores y talleres, lleguen por la app o por WhatsApp. Una ficha por teléfono.</p>" +
+      '<div class="kpis">' + k(all.length, "Clientes") + k(count(all, function (x) { return x.alta && x.alta > semana; }), "Nuevos esta semana") +
+      k(count(all, function (x) { return x.en_whatsapp; }), "Por WhatsApp") + k(count(all, function (x) { return x.en_app; }), "En la app") + k(count(all, porSeguir), "Seguimiento hoy") + "</div>" +
+      '<input type="search" id="cq" placeholder="Buscar por nombre, teléfono o correo" value="' + esc(state.cq) + '" aria-label="Buscar cliente">' +
+      '<div class="chips">' + CFILTROS.map(function (x) { var n = count(all, x[2]); return '<button data-cfil="' + x[0] + '" aria-pressed="' + (state.cfil === x[0]) + '">' + x[1] + " · " + n + "</button>"; }).join("") + "</div>" +
+      '<div class="list" id="clist">' + clientesListHtml() + "</div>" +
+      (all.length ? '<div class="actions" style="margin-top:14px"><button class="btn sm" data-csv="1">Descargar lista (CSV)</button></div>' : "");
+  }
+  function viewCliente(c) {
+    var d = state.dCliDet || { eventos: [], vehiculos: [] }, tel = waNum(c.telefono);
+    return '<button class="back" data-cli="">← Todos los clientes</button><h1>' + esc(c.nombre) + " " + chip(c.tipo === "taller" ? "Taller" : "Conductor") + " " + chip(c.etapa) + "</h1>" +
+      '<p class="muted small">' + [c.contacto, c.telefono, c.email, canales(c), c.zona, c.demo ? "taller de demostración" : ""].filter(Boolean).map(esc).join(" · ") + "</p>" +
+      '<div class="kpis">' + [[c.pedidos, "Pedidos"], [usd(c.total_pedidos), "Compras"], [c.solicitudes, "Solicitudes"], [c.citas, "Citas"], [c.gruas, "Grúas"], [c.mensajes, "Mensajes"]].filter(function (x) { return x[0] && x[0] !== "$0,00"; }).map(function (x) { return '<div class="kpi"><b>' + x[0] + "</b><span>" + x[1] + "</span></div>"; }).join("") + "</div>" +
+      '<div class="actions" style="margin-bottom:12px">' + (tel ? '<a class="btn sm primary" target="_blank" rel="noopener" href="https://wa.me/' + esc(tel) + '">Escribir por WhatsApp</a>' : "") +
+      (c.conversacion_id ? '<button class="btn sm" data-abrirconv="' + c.conversacion_id + '">Ver conversación con el asistente</button>' : "") + "</div>" +
+      '<form class="card" data-form="seguimiento"><h2>Seguimiento</h2><div class="row"><div class="field"><label for="sg-etapa">Etapa</label><select id="sg-etapa"><option value="">Automática</option>' +
+      ETAPAS.map(function (e) { return "<option" + (c.etapa_manual === e ? " selected" : "") + ">" + e + "</option>"; }).join("") + "</select></div>" +
+      field("sg-prox", "Próximo contacto", 'type="date"', c.proximo_contacto || "") + "</div>" +
+      '<div class="field"><label for="sg-notas">Notas internas</label><textarea id="sg-notas" rows="3" placeholder="Qué se habló, qué quedó pendiente…">' + esc(c.notas) + "</textarea></div>" +
+      '<button class="btn primary">Guardar seguimiento</button></form>' +
+      (d.vehiculos.length ? '<div class="card"><h2>Vehículos</h2><ul class="lines">' + d.vehiculos.map(function (v) { return "<li><span>" + esc(v.nombre) + '</span><span class="plate">' + esc(v.placa) + "</span></li>"; }).join("") + "</ul></div>" : "") +
+      '<div class="section-title">Historial</div>' + (d.eventos.length ? '<div class="timeline">' + d.eventos.map(function (e) {
+        return '<div class="tl"><small>' + fecha(e.fecha) + " · " + esc(e.tipo) + "</small>" + esc(e.texto) + "</div>";
+      }).join("") + "</div>" : "<div class='empty'>" + (state.dCliDet ? "Sin actividad registrada." : "Cargando…") + "</div>");
+  }
+  async function abrirCliente(k) {
+    state.dcli = k || null; state.dCliDet = null; render(); window.scrollTo(0, 0);
+    if (!k) return;
+    var r = await sb.rpc("mekachi_cliente_detalle", { p_clave: k });
+    if (!r.error && state.dcli === k) { state.dCliDet = r.data; render(); }
+  }
+  function descargarCsv() {
+    var cols = [["Nombre", "nombre"], ["Contacto", "contacto"], ["Tipo", "tipo"], ["Teléfono", "telefono"], ["Correo", "email"], ["En la app", "en_app"], ["En WhatsApp", "en_whatsapp"], ["Etapa", "etapa"], ["Pedidos", "pedidos"], ["Compras", "total_pedidos"], ["Solicitudes", "solicitudes"], ["Citas", "citas"], ["Grúas", "gruas"], ["Última actividad", "ultima"], ["Próximo contacto", "proximo_contacto"], ["Notas", "notas"]];
+    var cel = function (v) { v = v === true ? "sí" : v === false ? "no" : v == null ? "" : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+    var csv = "\ufeff" + cols.map(function (c) { return cel(c[0]); }).join(",") + "\n" + clientesFiltrados().map(function (r) { return cols.map(function (c) { return cel(r[c[1]]); }).join(","); }).join("\n");
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = "mekachi-clientes-" + hoyIso() + ".csv"; a.click(); URL.revokeObjectURL(a.href);
+  }
   function viewDTalleres() {
     var reales = state.dTalleres.filter(function (t) { return !t.es_demo; });
     return "<h1>Talleres</h1><p class='muted small'>Los talleres verificados aparecen en el mapa de los conductores.</p>" +
@@ -717,7 +791,7 @@
   // =====================================================================
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
-    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-servicios": viewDServicios, "d-talleres": viewDTalleres, "d-atencion": viewDAtencion, acceso: viewAcceso, cuenta: viewCuenta };
+    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-servicios": viewDServicios, "d-talleres": viewDTalleres, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
   function render() {
     nav();
     if (map) { map.remove(); map = null; }
@@ -776,6 +850,10 @@
     else if (d.terminar) await done(await call(sb.rpc("mekachi_terminar_solicitud", { p_solicitud: d.terminar })), "Trabajo terminado y registrado.");
     else if (d.rate) await done(await call(sb.rpc("mekachi_calificar", { p_solicitud: d.rate, p_rating: +d.n })), "Gracias por calificar.");
     else if (d.avanzar) await done(await call(sb.rpc("mekachi_despacho_avanzar", { p_pedido: d.avanzar })), "Pedido actualizado.");
+    else if ("cli" in d) await abrirCliente(d.cli);
+    else if (d.cfil) { state.cfil = d.cfil; render(); }
+    else if (d.csv) descargarCsv();
+    else if (d.abrirconv) { state.dsub = "conv"; state.dconv = d.abrirconv; state.dMsgs = []; go("d-atencion"); await loadMsgs(); render(); }
     else if (d.dsub) { state.dsub = d.dsub; state.dconv = null; render(); }
     else if ("conv" in d) { state.dconv = d.conv || null; state.dMsgs = []; if (state.dconv) await loadMsgs(); render(); window.scrollTo(0, document.body.scrollHeight); }
     else if (d.devolver) await done(await call(sb.from("mekachi_wa_conversaciones").update({ requiere_humano: false, motivo_humano: "", humano_desde: null }).eq("id", d.devolver)), "El asistente vuelve a atender esta conversación.");
@@ -813,6 +891,7 @@
   document.addEventListener("input", function (e) {
     if (e.target.setCustomValidity) e.target.setCustomValidity("");
     if (e.target.id === "q") { state.q = e.target.value; refreshList(); }
+    else if (e.target.id === "cq") { state.cq = e.target.value; $("#clist").innerHTML = clientesListHtml(); }
     else if (e.target.id === "dq") { state.dq = e.target.value; $("#sintomas").innerHTML = sintListHtml(); }
   });
   // Mensajes de validación en español en lugar de los genéricos del navegador.
@@ -880,6 +959,8 @@
         await done(await call(sb.rpc("mekachi_cotizar", { p_cotizacion: f.dataset.id, p_mano_obra: +f.elements.mano.value, p_repuestos: +f.elements.rep.value, p_nota: f.elements.nota.value.trim() })), "Precio enviado al cliente");
       } else if (kind === "cotizar-linea") {
         await done(await call(sb.rpc("mekachi_despacho_cotizar_item", { p_item: f.dataset.id, p_precio: +f.elements.precio.value })), "Pieza cotizada");
+      } else if (kind === "seguimiento") {
+        if (await call(sb.rpc("mekachi_guardar_seguimiento", { p_clave: state.dcli, p_etapa: v("sg-etapa"), p_notas: v("sg-notas"), p_proximo: v("sg-prox") || null }))) { await loadMode(); render(); toast("Seguimiento guardado"); }
       } else if (kind === "wa-responder") {
         var ses = await sb.auth.getSession();
         var resp = await fetch(CFG.supabaseUrl + "/functions/v1/mekachi-whatsapp?accion=responder", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.supabaseKey, Authorization: "Bearer " + ses.data.session.access_token }, body: JSON.stringify({ conversacion_id: state.dconv, texto: v("wa-txt") }) });

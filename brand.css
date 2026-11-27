@@ -214,3 +214,11 @@ h1 .status { vertical-align: middle; font-family: var(--font); }
 .bubble.out.human { background: var(--amber-soft); }
 .bubble small { display: block; color: var(--muted); font-size: .72rem; font-weight: 600; margin-bottom: 2px; }
 .sint .status { flex: none; }
+
+/* ---------- Clientes ---------- */
+.timeline { border-left: 2px solid var(--line); margin-left: 6px; padding-left: 16px; display: grid; gap: 12px; }
+.tl { position: relative; font-size: .94rem; overflow-wrap: anywhere; }
+.tl::before { content: ""; position: absolute; left: -22px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--blue); border: 2px solid var(--bg); }
+.tl small { display: block; color: var(--muted); font-size: .76rem; font-weight: 600; }
+.sint small { line-height: 1.35; display: block; margin-top: 2px; }
+@media (max-width: 420px) { .tabbar button { font-size: .62rem; } }
