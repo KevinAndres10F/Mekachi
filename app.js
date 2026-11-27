@@ -711,7 +711,7 @@
   statusCls["En conversación"] = "info"; statusCls["Con solicitud"] = "warn"; statusCls.Atendido = "ok"; statusCls.Inactivo = ""; statusCls["No contactar"] = ""; statusCls.Taller = "info"; statusCls.Conductor = "";
   var hoyIso = function () { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
   var porSeguir = function (c) { return c.proximo_contacto && c.proximo_contacto <= hoyIso() && c.etapa !== "No contactar"; };
-  var canales = function (c) { return [c.en_app ? "App" : "", c.en_whatsapp ? "WhatsApp" : ""].filter(Boolean).join(" y ") || "Sin canal"; };
+  var canales = function (c) { return [c.en_app || /^u:/.test(c.k) ? "App" : "", c.en_whatsapp ? "WhatsApp" : ""].filter(Boolean).join(" y ") || "Sin canal"; };
   var CFILTROS = [["todos", "Todos", function () { return true; }], ["seguir", "Seguimiento hoy", porSeguir], ["conductor", "Conductores", function (c) { return c.tipo === "conductor"; }],
     ["taller", "Talleres", function (c) { return c.tipo === "taller"; }], ["wa", "Solo WhatsApp", function (c) { return c.en_whatsapp && !c.en_app; }], ["inactivo", "Inactivos", function (c) { return c.etapa === "Inactivo"; }]];
   function clientesFiltrados() {
@@ -778,14 +778,15 @@
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = "mekachi-clientes-" + hoyIso() + ".csv"; a.click(); URL.revokeObjectURL(a.href);
   }
   function viewDTalleres() {
-    var reales = state.dTalleres.filter(function (t) { return !t.es_demo; });
+    // Primero los talleres reales; los de demostración van después, marcados.
+    var reales = state.dTalleres.slice().sort(function (a, b) { return (a.es_demo - b.es_demo) || a.nombre.localeCompare(b.nombre); });
     return "<h1>Talleres</h1><p class='muted small'>Los talleres verificados aparecen en el mapa de los conductores.</p>" +
       (reales.length ? reales.map(function (t) {
-        return '<div class="card"><div class="head"><div><h2>' + esc(t.nombre) + '</h2><div class="muted small">' + esc(t.sector) + " · " + esc(t.zona) + " · " + esc(t.direccion) + "<br>" + esc(t.contacto) + " · " + esc(t.telefono || t.whatsapp) + (t.lat == null ? " · sin ubicación" : "") + "</div></div>" + chip(t.verificado ? "Verificado" : "Por verificar") + "</div>" +
+        return '<div class="card"><div class="head"><div><h2>' + esc(t.nombre) + '</h2><div class="muted small">' + esc(t.sector) + " · " + esc(t.zona) + " · " + esc(t.direccion) + "<br>" + esc(t.contacto) + " · " + esc(t.telefono || t.whatsapp) + (t.lat == null ? " · sin ubicación" : "") + (t.horario ? "<br>" + esc(t.horario) : "") + (t.rating_total ? " · " + (t.rating_suma / t.rating_total).toFixed(1).replace(".", ",") + " ★ (" + t.rating_total + ")" : "") + "</div></div><span>" + (t.es_demo ? chip("Demo") + " " : "") + chip(t.verificado ? "Verificado" : "Por verificar") + "</span></div>" +
           '<div class="tags" style="margin-bottom:10px">' + (t.especialidades || []).map(function (e) { return "<span>" + esc(e) + "</span>"; }).join("") + "</div>" +
-          '<div class="actions"><button class="btn sm ' + (t.verificado ? "" : "primary") + '" data-verif="' + t.id + '" data-v="' + (t.verificado ? "0" : "1") + '">' + (t.verificado ? "Quitar verificación" : "Verificar taller") + "</button></div></div>";
-      }).join("") : "<div class='empty'>Todavía no se ha registrado ningún taller real.</div>") +
-      '<p class="muted small">Además hay ' + count(state.dTalleres, function (t) { return t.es_demo; }) + " talleres de ejemplo visibles en el mapa.</p>";
+          (t.es_demo ? "" : '<div class="actions"><button class="btn sm ' + (t.verificado ? "" : "primary") + '" data-verif="' + t.id + '" data-v="' + (t.verificado ? "0" : "1") + '">' + (t.verificado ? "Quitar verificación" : "Verificar taller") + "</button></div>") + "</div>";
+      }).join("") : "<div class='empty'>Todavía no hay talleres.</div>") +
+      '<p class="muted small">' + count(state.dTalleres, function (t) { return !t.es_demo; }) + " talleres reales y " + count(state.dTalleres, function (t) { return t.es_demo; }) + " de demostración.</p>";
   }
 
   // =====================================================================
