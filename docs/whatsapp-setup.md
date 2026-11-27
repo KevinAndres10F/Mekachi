@@ -64,7 +64,7 @@ El código desplegado es idéntico al del repositorio (comprobado el 27 de novie
 - **Conductores:** pregunta por el síntoma y por el barrio, traduce el barrio a una zona de Quito, da una orientación inicial con nivel de urgencia y recomienda talleres.
 - **Citas:** agenda una cita en un taller. Queda pendiente hasta que el taller la confirma en la app; el cliente recibe el aviso por WhatsApp.
 - **Grúa:** la ofrece sola en casos de seguridad (frenos, temperatura, luz de aceite o batería, humo, olor a combustible). Pide ubicación, tipo de vehículo, destino y teléfono, y acepta la ubicación compartida de WhatsApp.
-- **Talleres:** si el número que escribe coincide con el teléfono o WhatsApp de un taller registrado, busca repuestos, registra pedidos y consulta el estado de un pedido por número.
+- **Talleres:** si el número que escribe coincide con el teléfono o WhatsApp de un taller registrado, busca repuestos, dice si están en bodega o son bajo pedido, registra pedidos y consulta el estado de un pedido por número.
 - **Fotos:** las lee (tablero, pieza, fuga) y las usa para orientar.
 - **Audios:** todavía no los escucha; pide que escriban. Falta contratar un servicio de transcripción.
 - **Traspaso a una persona:** cuando lo piden, hay un reclamo o se agotaron las alternativas.
@@ -109,6 +109,8 @@ Meta solo entrega mensajes libres a quien escribió al número en las últimas 2
 | Gestión | App, Despacho > Atención > Grúas |
 
 El asistente asigna el proveedor de la zona, da un tiempo y un precio estimados, y avisa al equipo y al proveedor si tiene WhatsApp. En modo demostración avisa que no llegará una grúa real.
+
+La grúa también se puede pedir desde la app, con o sin cuenta: en el perfil Conductor, botón "Pedir grúa" del inicio, o desde un diagnóstico marcado "No conduzcas". Esas solicitudes llegan al mismo panel y el equipo recibe el aviso por WhatsApp. Hay un tope de 3 solicitudes por hora por teléfono.
 
 ## Configuración sin redesplegar
 
