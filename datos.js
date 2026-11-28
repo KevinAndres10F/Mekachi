@@ -9,6 +9,8 @@ window.MEKACHI_CONFIG = {
   supabaseKey: "sb_publishable_Xm-B7xgUS6oTJ-bxU1Fuhg_DcZH7UUW",
   tipos: { taller: "Llevo el auto al taller", recogida: "Recogida y entrega del auto", domicilio: "Mecánico a domicilio", grua: "Necesito grúa" },
   iva: 0.15,
+  // Horas de salida de las rutas de reparto.
+  cortes: ["09:00", "12:00", "15:00"],
   zonas: ["Norte", "Centro norte", "Sur", "Valles y periferia"],
   pagos: ["Transferencia", "Deuna", "Efectivo contra entrega"]
 };

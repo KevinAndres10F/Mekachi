@@ -235,3 +235,14 @@ h1 .status { vertical-align: middle; font-family: var(--font); }
 @media (max-width: 859px) { .topbar .seg button { font-size: .74rem; padding: 6px 7px; } .topbar { gap: 6px; padding-left: 10px; padding-right: 10px; } }
 @media (max-width: 480px) { .topbar .logo span { display: none; } }
 .side .seg { flex-wrap: wrap; border-radius: 14px; } .side .seg button { flex: 1 1 45%; }
+
+/* ---------- Reparto y cinco perfiles ---------- */
+.track { grid-template-columns: repeat(5, 1fr); font-size: .7rem; }
+#modesel { display: none; }
+@media (max-width: 859px) {
+  .topbar .seg.modes { display: none; }
+  #modesel { display: block; width: auto; flex: 1; max-width: 190px; background: rgba(255,255,255,.12); color: #fff; border: 0; border-radius: 99px; padding: 8px 14px; font: 600 .92rem var(--font); }
+  #modesel option { color: var(--ink); }
+  .topbar .logo span { display: inline; }
+}
+.inline select { max-width: 190px; padding: 8px 10px; }

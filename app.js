@@ -26,18 +26,19 @@
   var MODES = {
     conductor: { label: "Conductor", tabs: [["c-inicio", "Inicio", "home"], ["diag", "Diagnóstico", "pulse"], ["talleres", "Talleres", "pin"], ["solicitudes", "Solicitudes", "list"], ["garaje", "Garaje", "car"]] },
     taller: { label: "Taller", tabs: [["t-inicio", "Inicio", "home"], ["trabajos", "Trabajos", "wrench"], ["catalogo", "Repuestos", "box"], ["pedidos", "Pedidos", "truck"], ["perfil", "Mi taller", "shop"]] },
+    repartidor: { label: "Reparto", tabs: [["r-entregas", "Entregas", "truck"], ["r-perfil", "Mi perfil", "user"]] },
     grua: { label: "Grúa", tabs: [["g-inicio", "Inicio", "home"], ["g-servicios", "Servicios", "truck"], ["g-perfil", "Mi grúa", "shop"]] },
     despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-inventario", "Inventario", "box"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"], ["d-red", "Red", "shop"]] }
   };
   var PARENT = { solicitar: "talleres", carrito: "catalogo", grua: "c-inicio" };
   var VIEWMODE = { solicitar: "conductor", carrito: "taller", grua: "conductor" };
   Object.keys(MODES).forEach(function (m) { MODES[m].tabs.forEach(function (t) { VIEWMODE[t[0]] = m; }); });
-  var ESTADOS = ["Registrado", "Confirmado", "En camino", "Entregado"];
-  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1, "d-clientes": 1, "g-inicio": 1, "g-servicios": 1 };
+  var ESTADOS = ["Registrado", "Confirmado", "Listo", "En camino", "Entregado"];
+  var LIVE = { solicitudes: 1, trabajos: 1, pedidos: 1, "t-inicio": 1, "c-inicio": 1, "d-resumen": 1, "d-pedidos": 1, "d-servicios": 1, "d-atencion": 1, "d-clientes": 1, "g-inicio": 1, "g-servicios": 1, "r-entregas": 1 };
 
   var state = {
     mode: store.get("rol", null), view: null, loading: false,
-    user: null, perfil: null, miTaller: null, miGrua: null, gSol: [], dProv: [], acc: { rol: "conductor", tab: "login", after: null, msg: "" },
+    user: null, perfil: null, miTaller: null, miGrua: null, gSol: [], dProv: [], miRep: null, rPed: [], dBod: [], dRep: [], ibod: "todas", cbod: null, acc: { rol: "conductor", tab: "login", after: null, msg: "" },
     talleres: [], productos: [],
     dq: "", dcat: "Todos", dsel: null, fesp: "Todas", fzona: "Todas", pos: null, tsel: [], vsel: null, draft: null,
     garaje: store.get("garaje", []), solicitudes: [], historial: [],
@@ -100,7 +101,7 @@
     } catch (e) { local(); }
   }
   async function loadAuth() {
-    state.user = null; state.perfil = null; state.miTaller = null; state.miGrua = null;
+    state.user = null; state.perfil = null; state.miTaller = null; state.miGrua = null; state.miRep = null;
     if (!sb) return;
     var s = await sb.auth.getSession();
     state.user = s.data && s.data.session ? s.data.session.user : null;
@@ -118,6 +119,9 @@
     var gr = (await sb.from("mekachi_gruas_proveedores").select("*").eq("owner_id", state.user.id).maybeSingle()).data;
     if (!gr && pend && pend.grua) gr = await call(sb.from("mekachi_gruas_proveedores").insert(Object.assign({ owner_id: state.user.id }, pend.grua)).select().single());
     state.miGrua = gr && gr.id ? gr : null;
+    var rp = (await sb.from("mekachi_repartidores").select("*").eq("owner_id", state.user.id).maybeSingle()).data;
+    if (!rp && pend && pend.repartidor) rp = await call(sb.from("mekachi_repartidores").insert(Object.assign({ owner_id: state.user.id }, pend.repartidor)).select().single());
+    state.miRep = rp && rp.id ? rp : null;
     store.set("pending", null);
     // El garaje de invitado sube a la cuenta la primera vez.
     var local = store.get("garaje", []);
@@ -144,12 +148,18 @@
     } else if (state.mode === "taller" && state.miTaller) {
       r = await Promise.all([
         sb.from("mekachi_cotizaciones").select("*, solicitud:mekachi_solicitudes(*)").eq("taller_id", state.miTaller.id).order("created_at", { ascending: false }),
-        sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(*)").eq("taller_id", state.miTaller.id).order("created_at", { ascending: false })
+        sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(*), cod:mekachi_pedido_codigos(codigo)").eq("taller_id", state.miTaller.id).order("created_at", { ascending: false })
       ]);
       if (!r[0].error) state.trabajos = r[0].data.filter(function (c) { return c.solicitud; });
       if (!r[1].error) state.pedidos = r[1].data;
       var ct = await sb.from("mekachi_citas").select("*").eq("taller_id", state.miTaller.id).order("created_at", { ascending: false });
       if (!ct.error) state.tCitas = ct.data;
+    } else if (state.mode === "repartidor" && state.miRep) {
+      var me2 = await sb.from("mekachi_repartidores").select("*, bodega:mekachi_bodegas(nombre,direccion)").eq("id", state.miRep.id).maybeSingle();
+      if (me2.data) state.miRep = me2.data;
+      var rq = await sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(nombre,detalle,cantidad), taller:mekachi_talleres(nombre,direccion,sector,zona,telefono,whatsapp,lat,lng), bodega:mekachi_bodegas(nombre,direccion)").or("estado.in.(Listo,En camino),devolucion_estado.in.(Solicitada,Recogida),entregado_at.gte." + new Date(Date.now() - 864e5).toISOString()).order("created_at");
+      // Despacho ve todo por su rol: aquí solo cuenta lo que le toca a este repartidor.
+      if (!rq.error) state.rPed = rq.data.filter(function (o) { return o.repartidor_id === state.miRep.id || (o.estado === "Listo" && !o.repartidor_id) || o.devolucion_estado === "Solicitada"; });
     } else if (state.mode === "grua" && state.miGrua) {
       var gs = await sb.from("mekachi_gruas_solicitudes").select("*").eq("proveedor_id", state.miGrua.id).order("created_at", { ascending: false }).limit(60);
       if (!gs.error) state.gSol = gs.data;
@@ -157,7 +167,7 @@
       if (me.data) state.miGrua = me.data;
     } else if (state.mode === "despacho" && esDespacho()) {
       r = await Promise.all([
-        sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(*), taller:mekachi_talleres(nombre,direccion,zona,telefono)").order("created_at", { ascending: false }),
+        sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(*), taller:mekachi_talleres(nombre,direccion,zona,telefono), cod:mekachi_pedido_codigos(codigo)").order("created_at", { ascending: false }),
         sb.from("mekachi_solicitudes").select("*, taller:mekachi_talleres(nombre)").order("created_at", { ascending: false }),
         sb.from("mekachi_talleres").select("*").order("created_at", { ascending: false })
       ]);
@@ -174,7 +184,12 @@
       if (!a[2].error) state.dCitas = a[2].data;
       if (state.dconv) await loadMsgs();
       var iv = await sb.from("mekachi_productos").select("*, inv:mekachi_inventario(*)").order("categoria").order("nombre");
-      if (!iv.error) state.dInv = iv.data.map(function (x) { var i = x.inv || {}; return { id: x.id, codigo: x.codigo, cat: x.categoria, nombre: x.nombre, compat: x.compatibilidad, precio: +x.precio, activo: x.activo, demo: x.es_demo, stock: i.stock || 0, minimo: i.stock_minimo || 0, costo: +(i.costo || 0), proveedor: i.proveedor || "", ubicacion: i.ubicacion || "" }; });
+      var bq = await Promise.all([sb.from("mekachi_bodegas").select("*").order("created_at"), sb.from("mekachi_repartidores").select("*").order("created_at"), sb.from("mekachi_stock_bodega").select("*")]);
+      if (!bq[0].error) state.dBod = bq[0].data;
+      if (!bq[1].error) state.dRep = bq[1].data;
+      var porBod = {}; (bq[2].data || []).forEach(function (r) { (porBod[r.producto_id] = porBod[r.producto_id] || {})[r.bodega_id] = r.stock; });
+      if (!iv.error) state.dInv = iv.data.map(function (x) { var i = x.inv || {}; return { sb: porBod[x.id] || {}, total: i.stock || 0, id: x.id, codigo: x.codigo, cat: x.categoria, nombre: x.nombre, compat: x.compatibilidad, precio: +x.precio, activo: x.activo, demo: x.es_demo, stock: i.stock || 0, minimo: i.stock_minimo || 0, costo: +(i.costo || 0), proveedor: i.proveedor || "", ubicacion: i.ubicacion || "" }; });
+      aplicarBodega();
       var pv = await sb.from("mekachi_gruas_proveedores").select("*").order("es_demo").order("nombre");
       if (!pv.error) state.dProv = pv.data;
       var oc = await sb.from("mekachi_compras").select("*, items:mekachi_compra_items(cantidad,costo_unit,producto:mekachi_productos(nombre,compatibilidad))").order("created_at", { ascending: false }).limit(40);
@@ -182,6 +197,19 @@
       var cl = await sb.rpc("mekachi_clientes");
       if (!cl.error) state.dClientes = cl.data || [];
     }
+  }
+  // Las existencias que se muestran dependen de la bodega elegida en Inventario.
+  function aplicarBodega() {
+    if (state.ibod !== "todas" && !byId(state.dBod, state.ibod)) state.ibod = "todas";
+    state.dInv.forEach(function (x) { x.stock = state.ibod === "todas" ? x.total : (x.sb[state.ibod] || 0); });
+  }
+  var bodNombre = function (id) { var b = byId(state.dBod, id); return b ? b.nombre : "Sin bodega"; };
+  var bodSelect = function (id, sel) { return '<select id="' + id + '" name="bodega" aria-label="Bodega">' + state.dBod.filter(function (b) { return b.activa; }).map(function (b) { return '<option value="' + b.id + '"' + (b.id === sel ? " selected" : "") + ">" + esc(b.nombre) + "</option>"; }).join("") + "</select>"; };
+  var bodActual = function () { return state.ibod !== "todas" ? state.ibod : (state.dBod[0] || {}).id; };
+  var bodForm = function (f) { var el = f.querySelector("[name=bodega]"); return el ? el.value : bodActual(); };
+  function proximaRuta() {
+    var ahora = new Date(), hm = ("0" + ahora.getHours()).slice(-2) + ":" + ("0" + ahora.getMinutes()).slice(-2), c = (CFG.cortes || []).filter(function (h) { return h > hm; })[0];
+    return c ? "hoy a las " + c : "mañana a las " + (CFG.cortes || ["09:00"])[0];
   }
   async function loadMsgs() {
     var m = await sb.from("mekachi_wa_mensajes").select("id,rol,autor,texto,created_at").eq("conversacion_id", state.dconv).order("id", { ascending: false }).limit(80);
@@ -203,6 +231,7 @@
     if (v === "d-pedidos") return count(state.dPedidos, function (o) { return o.estado !== "Entregado"; });
     if (v === "d-atencion") return count(state.dConvs, function (c) { return c.requiere_humano; }) + count(state.dGruas, gruaActiva) + count(state.dCitas, function (c) { return c.estado === "Pendiente"; });
     if (v === "d-clientes") return count(state.dClientes, porSeguir);
+    if (v === "r-entregas") return count(state.rPed, function (o) { return o.estado === "Listo" || o.estado === "En camino" || o.devolucion_estado === "Solicitada"; });
     if (v === "g-servicios") return count(state.gSol, function (g) { return g.estado === "Asignada"; });
     if (v === "d-inventario") return count(state.dInv, bajoMinimo);
     if (v === "d-red") return count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; });
@@ -213,6 +242,7 @@
     if (!state.mode) return;
     var modes = Object.keys(MODES).map(function (m) { return '<button data-mode="' + m + '" aria-pressed="' + (state.mode === m) + '">' + MODES[m].label + "</button>"; }).join("");
     $$(".modes").forEach(function (el) { el.innerHTML = modes; });
+    $("#modesel").innerHTML = Object.keys(MODES).map(function (m) { return '<option value="' + m + '"' + (state.mode === m ? " selected" : "") + ">" + MODES[m].label + "</option>"; }).join("");
     var cur = PARENT[state.view] || state.view;
     var tabs = MODES[state.mode].tabs.map(function (t) {
       var b = badgeFor(t[0]);
@@ -227,6 +257,7 @@
   function guard(v) {
     var m = VIEWMODE[v];
     if (m === "taller" && !(state.user && (state.miTaller || v === "perfil"))) return "taller";
+    if (m === "repartidor" && !(state.user && (state.miRep || v === "r-perfil"))) return "repartidor";
     if (m === "grua" && !(state.user && (state.miGrua || v === "g-perfil"))) return "grua";
     if (m === "despacho" && !esDespacho()) return "despacho";
     return null;
@@ -235,6 +266,7 @@
     if (VIEWMODE[v]) state.mode = VIEWMODE[v];
     var need = guard(v);
     if (need === "taller" && state.user) { v = "perfil"; need = null; toast("Completa los datos de tu taller para continuar."); }
+    if (need === "repartidor" && state.user) { v = "r-perfil"; need = null; toast("Completa tus datos de repartidor para continuar."); }
     if (need === "grua" && state.user) { v = "g-perfil"; need = null; toast("Completa los datos de tu servicio de grúa para continuar."); }
     if (need) { state.acc = { rol: need, tab: state.user ? "login" : (need === "despacho" ? "login" : "registro"), after: v, msg: "" }; v = "acceso"; }
     if (v === "cuenta" && !state.user && state.view !== "cuenta") state.acc = { rol: "conductor", tab: "registro", after: MODES[state.mode].tabs[0][0], msg: "" };
@@ -265,17 +297,20 @@
       '<div class="roles">' +
       role("conductor", "car", "Soy conductor", "Diagnostica tu auto y encuentra un taller. Sin registro.") +
       role("taller", "wrench", "Soy taller", "Registra tu taller, recibe clientes y pide repuestos") +
+      role("repartidor", "box", "Soy repartidor", "Entrega repuestos de Mekachi a los talleres") +
       role("grua", "truck", "Tengo una grúa", "Recibe solicitudes de auxilio en tu zona") +
       role("despacho", "chart", "Soy Mekachi", "Despacho: pedidos, inventario, atención y clientes") +
       '</div><p class="foot">Puedes cambiar de perfil en cualquier momento.</p></div></div>';
   }
   function viewAcceso() {
     var a = state.acc, reg = a.tab === "registro" && a.rol !== "despacho";
-    var titulo = a.rol === "grua" ? (reg ? "Registra tu servicio de grúa" : "Entra a tu cuenta de grúa") : a.rol === "taller" ? (reg ? "Registra tu taller" : "Entra a tu taller") : a.rol === "despacho" ? "Acceso de despacho" : (reg ? "Crea tu cuenta" : "Inicia sesión");
-    var intro = a.msg || (a.rol === "grua" ? "Con tu cuenta recibes solicitudes de grúa de conductores y talleres de tu zona." : a.rol === "taller" ? "Con tu cuenta recibes solicitudes de conductores y pides repuestos." : a.rol === "despacho" ? "Solo para el equipo de Mekachi." : "Con tu cuenta guardas tus autos, tus solicitudes y el historial de servicios.");
+    var titulo = a.rol === "repartidor" ? (reg ? "Regístrate como repartidor" : "Entra como repartidor") : a.rol === "grua" ? (reg ? "Registra tu servicio de grúa" : "Entra a tu cuenta de grúa") : a.rol === "taller" ? (reg ? "Registra tu taller" : "Entra a tu taller") : a.rol === "despacho" ? "Acceso de despacho" : (reg ? "Crea tu cuenta" : "Inicia sesión");
+    var intro = a.msg || (a.rol === "repartidor" ? "Para repartidores del equipo Mekachi. Verás los pedidos listos y confirmarás cada entrega." : a.rol === "grua" ? "Con tu cuenta recibes solicitudes de grúa de conductores y talleres de tu zona." : a.rol === "taller" ? "Con tu cuenta recibes solicitudes de conductores y pides repuestos." : a.rol === "despacho" ? "Solo para el equipo de Mekachi." : "Con tu cuenta guardas tus autos, tus solicitudes y el historial de servicios.");
     if (state.user && a.rol === "despacho") return "<h1>Acceso de despacho</h1><div class='notice'>Tu cuenta no tiene permiso de despacho. Pide al administrador de Mekachi que la habilite.</div><button class='btn' data-logout='1'>Cerrar sesión</button>";
     var extra = "";
     if (reg && a.rol === "conductor") extra = field("r-nombre", "Tu nombre", "required autocomplete=name", "") + field("r-tel", "Teléfono", TEL + " required", "");
+    if (reg && a.rol === "repartidor") extra = '<div class="row">' + field("r-nombre", "Tu nombre", "required", "") + field("r-tel", "Teléfono", TEL + " required", "") + "</div>" +
+      '<div class="row"><div class="field"><label for="r-veh">Vehículo</label><select id="r-veh">' + opts(["Moto", "Auto", "Camioneta"]) + "</select></div>" + field("r-placa", "Placa", 'required style="text-transform:uppercase"', "") + "</div>";
     if (reg && a.rol === "grua") extra = field("r-grua", "Nombre del servicio o empresa", "required", "") +
       '<div class="row">' + field("r-nombre", "Persona de contacto", "required", "") + field("r-tel", "Teléfono o WhatsApp", TEL + " required", "") + "</div>" +
       '<div class="row"><div class="field"><label for="r-zona">Zona principal</label><select id="r-zona">' + opts(CFG.zonas) + "</select></div>" + field("r-tarifa", "Tarifa base $", 'type="number" min="1" step="0.5" required', "") + "</div>" +
@@ -287,18 +322,18 @@
       '<div class="field"><label for="r-zona">Zona de Quito</label><select id="r-zona">' + opts(CFG.zonas) + "</select></div></div>" +
       '<div class="field"><label>Especialidades</label><div class="checks">' + ESP.map(function (e) { return '<label><input type="checkbox" name="esp" value="' + esc(e) + '"> ' + esc(e) + "</label>"; }).join("") + "</div></div>";
     return "<h1>" + titulo + "</h1><p class='muted'>" + esc(intro) + "</p>" +
-      (a.rol !== "despacho" ? '<div class="chips"><button data-acctab="login" aria-pressed="' + !reg + '">Ya tengo cuenta</button><button data-acctab="registro" aria-pressed="' + reg + '">' + (a.rol === "taller" ? "Registrar taller" : a.rol === "grua" ? "Registrar grúa" : "Crear cuenta") + "</button></div>" : "") +
+      (a.rol !== "despacho" ? '<div class="chips"><button data-acctab="login" aria-pressed="' + !reg + '">Ya tengo cuenta</button><button data-acctab="registro" aria-pressed="' + reg + '">' + (a.rol === "taller" ? "Registrar taller" : a.rol === "grua" ? "Registrar grúa" : a.rol === "repartidor" ? "Registrarme" : "Crear cuenta") + "</button></div>" : "") +
       '<form class="card" data-form="' + (reg ? "registro" : "login") + '">' + extra +
       field("a-email", "Correo", 'type="email" required autocomplete="email" data-msg="Escribe un correo válido"', "") +
       field("a-pass", "Contraseña", 'type="password" required minlength="6" autocomplete="' + (reg ? "new-password" : "current-password") + '" data-msg="Mínimo 6 caracteres"', "") +
-      '<button class="btn primary block">' + (reg ? (a.rol === "taller" ? "Registrar taller" : a.rol === "grua" ? "Registrar grúa" : "Crear cuenta") : "Entrar") + "</button></form>" +
+      '<button class="btn primary block">' + (reg ? (a.rol === "taller" ? "Registrar taller" : a.rol === "grua" ? "Registrar grúa" : a.rol === "repartidor" ? "Registrarme" : "Crear cuenta") : "Entrar") + "</button></form>" +
       (a.rol === "conductor" ? '<button class="back" data-go="c-inicio">Seguir sin cuenta</button>' : "");
   }
   function viewCuenta() {
     if (!state.user) return viewAcceso() + acercaHtml();
     var p = state.perfil || {};
     return "<h1>Mi cuenta</h1>" +
-      '<div class="card"><h2>' + esc(p.nombre || "Sin nombre") + '</h2><p class="muted small">' + esc(state.user.email || "") + " · " + esc(p.rol === "grua" ? "Grúa" : p.rol === "taller" ? "Taller" : p.rol === "despacho" ? "Despacho Mekachi" : "Conductor") + "</p>" +
+      '<div class="card"><h2>' + esc(p.nombre || "Sin nombre") + '</h2><p class="muted small">' + esc(state.user.email || "") + " · " + esc(p.rol === "repartidor" ? "Repartidor" : p.rol === "grua" ? "Grúa" : p.rol === "taller" ? "Taller" : p.rol === "despacho" ? "Despacho Mekachi" : "Conductor") + "</p>" +
       '<form data-form="micuenta"><div class="row">' + field("c-nombre", "Nombre", "required", p.nombre) + field("c-tel", "Teléfono", TEL, p.telefono) + "</div>" +
       '<div class="actions"><button class="btn sm primary">Guardar</button><button type="button" class="btn sm" data-logout="1">Cerrar sesión</button></div></form></div>' + acercaHtml();
   }
@@ -653,6 +688,7 @@
       '<form class="card" data-form="pedido"><h2>Entrega</h2>' + field("p-dir", "Dirección de entrega", 'required placeholder="Calle, número y referencia"', tl.direccion) +
       '<div class="row"><div class="field"><label for="p-zona">Zona</label><select id="p-zona">' + opts(CFG.zonas, tl.zona) + "</select></div>" +
       '<div class="field"><label for="p-pago">Forma de pago</label><select id="p-pago">' + opts(CFG.pagos) + "</select></div></div>" +
+      '<div class="field"><label for="p-tipo">Entrega (el envío va incluido)</label><select id="p-tipo"><option value="Ruta">Ruta programada: sale ' + proximaRuta() + '</option><option value="Urgente">Urgente: sale apenas esté listo</option></select></div>' +
       '<div class="field"><label for="p-nota">Nota para el despacho (opcional)</label><textarea id="p-nota" rows="2" placeholder="Ej.: urgente, el auto está en el elevador"></textarea></div>' +
       '<button class="btn primary block">Confirmar pedido</button></form>';
   }
@@ -669,8 +705,12 @@
   function viewPedidos() {
     if (!state.pedidos.length) return "<h1>Pedidos</h1><div class='empty'>" + (state.loading ? "Cargando…" : "Aquí aparecerán tus pedidos.<br><br><button class='btn primary' data-go='catalogo'>Pedir repuestos</button>") + "</div>";
     return "<h1>Pedidos</h1>" + state.pedidos.map(function (o) {
-      return '<div class="card"><div class="head"><div><h2>' + esc(o.num) + '</h2><div class="muted small">' + fecha(o.created_at) + " · " + esc(o.pago) + "</div></div>" + chip(o.estado) + "</div>" +
-        track(o) + orderLines(o) + orderTotal(o) + '<div class="actions"><button class="btn sm" data-repeat="' + o.id + '">Repetir pedido</button></div></div>';
+      var cod = o.cod && o.cod.codigo, ent = o.estado === "Entregado";
+      return '<div class="card"><div class="head"><div><h2>' + esc(o.num) + '</h2><div class="muted small">' + fecha(o.created_at) + " · " + esc(o.pago) + " · " + (o.tipo_entrega === "Urgente" ? "entrega urgente" : "ruta programada") + "</div></div>" + chip(o.estado) + "</div>" +
+        track(o) + orderLines(o) + orderTotal(o) +
+        (cod && (o.estado === "Listo" || o.estado === "En camino") ? '<div class="notice"><b>Código de entrega: ' + esc(cod) + "</b><br>Dáselo al repartidor solo cuando recibas el pedido completo.</div>" : "") +
+        (o.devolucion_estado ? '<p class="small"><b>Devolución ' + esc(o.devolucion_estado.toLowerCase()) + ".</b> " + esc(o.devolucion_motivo) + "</p>" : "") +
+        '<div class="actions"><button class="btn sm" data-repeat="' + o.id + '">Repetir pedido</button>' + (ent && !o.devolucion_estado ? '<button class="btn sm" data-devolver-ped="' + o.id + '">Pedir devolución</button>' : "") + "</div></div>";
     }).join("");
   }
   function viewPerfil() {
@@ -712,9 +752,12 @@
             '</span><input name="precio" type="number" min="0.01" step="0.01" required placeholder="Precio $" aria-label="Precio unitario"><button class="btn sm">Cotizar</button></form>';
         }).join("");
         return '<div class="card"><div class="head"><div><h2>' + esc(o.num) + " · " + esc(t.nombre) + '</h2><div class="muted small">' + fecha(o.created_at) + " · " + esc(o.direccion) + " (" + esc(o.zona) + ") · " + esc(o.pago) + (t.telefono ? " · " + esc(t.telefono) : "") + "</div></div>" + chip(o.estado) + "</div>" +
-          track(o) + orderLines(o) + cot + (i >= 0 && i < 2 ? faltantes(o) : "") + orderTotal(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
-          (sig ? '<div class="actions"><button class="btn sm primary" data-avanzar="' + o.id + '"' + (bloq ? " disabled" : "") + ">Marcar como " + sig.toLowerCase() + "</button>" + (bloq ? '<span class="muted small">Cotiza primero las piezas pendientes.</span>' : "") + "</div>" : "") +
-          (o.estado !== "Cancelado" ? '<div class="actions" style="margin-top:8px"><button class="btn sm danger" data-cancelarped="' + o.id + '" data-sale="' + (i >= 2 ? "1" : "") + '">' + (i >= 2 ? "Cancelar y devolver a bodega" : "Cancelar pedido") + "</button></div>" : "") + "</div>";
+          track(o) + orderLines(o) + cot + (i >= 0 && i < 3 ? faltantes(o) : "") + orderTotal(o) +
+          '<p class="small"><b>Bodega:</b> ' + esc(o.bodega_id ? bodNombre(o.bodega_id) : "se asigna al confirmar") + " · <b>Entrega:</b> " + (o.tipo_entrega === "Urgente" ? chip("Urgente") : "ruta programada") + " · <b>Repartidor:</b> " + esc((byId(state.dRep, o.repartidor_id) || {}).nombre || "sin asignar") + (o.cod && i >= 2 && i < 4 ? " · <b>Código:</b> " + esc(o.cod.codigo) : "") + "</p>" +
+          (o.devolucion_estado ? '<div class="notice"><b>Devolución ' + esc(o.devolucion_estado.toLowerCase()) + ":</b> " + esc(o.devolucion_motivo || "sin motivo") + "</div>" : "") +
+          (i >= 0 && i < 3 ? '<form class="inline" data-form="asignar-ped" data-id="' + o.id + '" style="margin-bottom:8px;flex-wrap:wrap">' + bodSelect("", o.bodega_id) + '<select name="rep" aria-label="Repartidor"><option value="">Cualquier repartidor</option>' + state.dRep.filter(function (r) { return r.verificado; }).map(function (r) { return '<option value="' + r.id + '"' + (r.id === o.repartidor_id ? " selected" : "") + ">" + esc(r.nombre) + "</option>"; }).join("") + '</select><button class="btn sm">Asignar</button></form>' : "") + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
+          (sig ? '<div class="actions"><button class="btn sm primary" data-avanzar="' + o.id + '"' + (bloq ? " disabled" : "") + ">" + ({ Confirmado: "Confirmar pedido", Listo: "Marcar alistado", "En camino": "Despachar: sale de bodega", Entregado: "Marcar entregado" })[sig] + "</button>" + (bloq ? '<span class="muted small">Cotiza primero las piezas pendientes.</span>' : "") + "</div>" : "") +
+          (o.estado !== "Cancelado" ? '<div class="actions" style="margin-top:8px"><button class="btn sm danger" data-cancelarped="' + o.id + '" data-sale="' + (i >= 3 ? "1" : "") + '">' + (o.devolucion_estado ? "Procesar devolución: vuelve a bodega" : i >= 3 ? "Cancelar y devolver a bodega" : "Cancelar pedido") + "</button></div>" : "") + "</div>";
       }).join("");
   }
   function viewDServicios() {
@@ -776,17 +819,18 @@
   }
   // Lo que falta en bodega para un pedido que aún no sale.
   function faltantes(o) {
-    var f = (o.items || []).filter(function (l) { return l.producto_id; }).map(function (l) { var x = byId(state.dInv, l.producto_id); return { l: l, falta: Math.max(l.cantidad - (x ? x.stock : 0), 0) }; }).filter(function (y) { return y.falta > 0; });
+    var f = (o.items || []).filter(function (l) { return l.producto_id; }).map(function (l) { var x = byId(state.dInv, l.producto_id), hay = !x ? 0 : o.bodega_id ? (x.sb[o.bodega_id] || 0) : x.total; return { l: l, falta: Math.max(l.cantidad - hay, 0) }; }).filter(function (y) { return y.falta > 0; });
     if (!(o.items || []).some(function (l) { return l.producto_id; })) return "";
     return f.length ? '<div class="notice"><b>Falta en bodega.</b> Registra la compra con su costo real antes de despachar; si no, entra al costo promedio.' + f.map(function (y) {
-      return '<form class="inline" data-form="compra-pedido" data-pid="' + y.l.producto_id + '" data-num="' + esc(o.num) + '" style="margin-top:8px;flex-wrap:wrap"><span class="small" style="flex:1 1 140px">' + esc(y.l.nombre) + '</span><input name="cant" type="number" min="1" step="1" required value="' + y.falta + '" aria-label="Cantidad" style="max-width:76px"><input name="costo" type="number" min="0.01" step="0.01" required placeholder="Costo $" aria-label="Costo unitario" style="max-width:104px"><button class="btn sm">Registrar compra</button></form>';
+      return '<form class="inline" data-form="compra-pedido" data-bod="' + (o.bodega_id || "") + '" data-pid="' + y.l.producto_id + '" data-num="' + esc(o.num) + '" style="margin-top:8px;flex-wrap:wrap"><span class="small" style="flex:1 1 140px">' + esc(y.l.nombre) + '</span><input name="cant" type="number" min="1" step="1" required value="' + y.falta + '" aria-label="Cantidad" style="max-width:76px"><input name="costo" type="number" min="0.01" step="0.01" required placeholder="Costo $" aria-label="Costo unitario" style="max-width:104px"><button class="btn sm">Registrar compra</button></form>';
     }).join("") + "</div>" : '<p class="muted small">Todo lo de catálogo está en bodega.</p>';
   }
   function viewDInventario() {
     var all = state.dInv, x = state.iprod ? byId(all, state.iprod) : null;
     if (x) return viewProducto(x);
     var pedidas = count(state.dCompras, function (c) { return c.estado === "Pedida"; });
-    var sub = '<div class="chips">' + [["stock", "Existencias"], ["compras", "Compras" + (pedidas ? " · " + pedidas : "")], ["conteo", "Conteo físico"]].map(function (c) { return '<button data-isub="' + c[0] + '" aria-pressed="' + (state.isub === c[0]) + '">' + c[1] + "</button>"; }).join("") + "</div>";
+    var bods = state.dBod.length > 1 ? '<div class="field" style="margin:8px 0 0"><label for="ibod">Bodega</label><select id="ibod"><option value="todas">Todas las bodegas</option>' + state.dBod.map(function (b) { return '<option value="' + b.id + '"' + (state.ibod === b.id ? " selected" : "") + ">" + esc(b.nombre) + "</option>"; }).join("") + "</select></div>" : "";
+    var sub = bods + '<div class="chips">' + [["stock", "Existencias"], ["compras", "Compras" + (pedidas ? " · " + pedidas : "")], ["conteo", "Conteo físico"]].map(function (c) { return '<button data-isub="' + c[0] + '" aria-pressed="' + (state.isub === c[0]) + '">' + c[1] + "</button>"; }).join("") + "</div>";
     if (state.isub === "compras") return "<h1>Inventario</h1>" + sub + comprasHtml();
     if (state.isub === "conteo") return "<h1>Inventario</h1>" + sub + conteoHtml();
     var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; };
@@ -815,7 +859,7 @@
     var o = state.oc;
     if (o) {
       var tot = o.items.reduce(function (n, it) { return n + it.cantidad * it.costo; }, 0), libres = state.dInv.filter(function (x) { return !o.items.some(function (it) { return it.id === x.id; }); });
-      return '<form class="card" data-form="oc"><h2>Nueva orden de compra</h2><div class="row">' + field("oc-prov", "Proveedor", 'required placeholder="Nombre del distribuidor"', o.proveedor) + field("oc-nota", "Nota (opcional)", 'maxlength="160"', o.nota) + "</div>" +
+      return '<form class="card" data-form="oc"><h2>Nueva orden de compra</h2><div class="row">' + field("oc-prov", "Proveedor", 'required placeholder="Nombre del distribuidor"', o.proveedor) + field("oc-nota", "Nota (opcional)", 'maxlength="160"', o.nota) + "</div>" + '<div class="field"><label>Bodega que recibe</label>' + bodSelect("oc-bod", bodActual()) + "</div>" +
         (o.items.length ? o.items.map(function (it) {
           var x = byId(state.dInv, it.id) || {};
           return '<div class="ocrow"><span><b>' + esc(x.nombre) + '</b><small class="muted"> ' + esc(x.compat) + " · hay " + x.stock + ", mínimo " + x.minimo + '</small></span><input type="number" min="1" step="1" required data-ocq="' + it.id + '" value="' + it.cantidad + '" aria-label="Cantidad"><input type="number" min="0" step="0.01" required data-occ="' + it.id + '" value="' + it.costo + '" aria-label="Costo unitario"><button type="button" class="btn sm" data-ocdel="' + it.id + '" aria-label="Quitar">✕</button></div>';
@@ -837,18 +881,20 @@
   function conteoHtml() {
     var cats = state.dInv.map(function (x) { return x.cat; }).filter(function (c, i, a) { return a.indexOf(c) === i; });
     if (cats.indexOf(state.ccat) < 0) state.ccat = cats[0];
-    var list = state.dInv.filter(function (x) { return x.cat === state.ccat; });
+    if (!byId(state.dBod, state.cbod)) state.cbod = bodActual();
+    var list = state.dInv.filter(function (x) { return x.cat === state.ccat; }), sis = function (x) { return x.sb[state.cbod] || 0; };
     return "<p class='muted small'>Cuenta lo que hay en la percha y escribe la cantidad real. Solo se ajusta lo que sea distinto.</p>" +
       '<div class="chips">' + cats.map(function (c) { return '<button data-ccat="' + esc(c) + '" aria-pressed="' + (state.ccat === c) + '">' + esc(c) + "</button>"; }).join("") + "</div>" +
+      (state.dBod.length > 1 ? '<div class="field"><label for="cbod">Bodega que se cuenta</label>' + bodSelect("cbod", state.cbod) + "</div>" : "") +
       '<form class="card" data-form="conteo">' + list.map(function (x) {
-        return '<div class="ocrow two"><span><b>' + esc(x.nombre) + '</b><small class="muted"> ' + esc(x.compat) + (x.ubicacion ? " · " + esc(x.ubicacion) : "") + " · sistema: " + x.stock + '</small></span><input type="number" min="0" step="1" required data-conteo="' + x.id + '" data-sis="' + x.stock + '" value="' + x.stock + '" aria-label="Unidades contadas"></div>';
+        return '<div class="ocrow two"><span><b>' + esc(x.nombre) + '</b><small class="muted"> ' + esc(x.compat) + (x.ubicacion ? " · " + esc(x.ubicacion) : "") + " · sistema: " + sis(x) + '</small></span><input type="number" min="0" step="1" required data-conteo="' + x.id + '" data-sis="' + sis(x) + '" value="' + sis(x) + '" aria-label="Unidades contadas"></div>';
       }).join("") + field("ct-motivo", "Referencia del conteo (opcional)", 'maxlength="80" placeholder="Conteo mensual de noviembre"', "") + '<button class="btn primary block">Guardar conteo de ' + esc(state.ccat) + "</button></form>";
   }
   function viewProducto(x) {
     return '<button class="back" data-inv="">← Todo el inventario</button><h1>' + esc(x.nombre) + " " + chip(x.stock === 0 ? "Sin existencias" : x.stock <= x.minimo ? "Bajo mínimo" : "En bodega") + "</h1>" +
       '<p class="muted small">' + esc(x.compat) + " · " + esc(x.cat) + " · " + esc(x.codigo || "sin código") + (x.demo ? " · demostración" : "") + (x.activo ? "" : " · oculto del catálogo") + "</p>" +
       '<div class="kpis"><div class="kpi"><b>' + x.stock + '</b><span>En bodega</span></div><div class="kpi"><b>' + usd(x.costo) + '</b><span>Costo promedio</span></div><div class="kpi"><b>' + usd(x.precio) + '</b><span>Precio sin IVA</span></div><div class="kpi"><b>' + margen(x) + "</b><span>Margen</span></div></div>" +
-      '<form class="card" data-form="inv-mover"><h2>Registrar movimiento</h2><div class="row"><div class="field"><label for="m-tipo">Tipo</label><select id="m-tipo"><option value="Entrada">Entrada (compra)</option><option value="Salida">Salida (venta directa, daño, pérdida)</option><option value="Devolución">Devolución de un taller</option><option value="Ajuste">Ajuste por conteo físico</option></select></div>' +
+      '<form class="card" data-form="inv-mover"><h2>Registrar movimiento</h2>' + (state.dBod.length > 1 ? '<div class="field"><label>Bodega</label>' + bodSelect("m-bod", bodActual()) + "</div>" : "") + '<div class="row"><div class="field"><label for="m-tipo">Tipo</label><select id="m-tipo"><option value="Entrada">Entrada (compra)</option><option value="Salida">Salida (venta directa, daño, pérdida)</option><option value="Devolución">Devolución de un taller</option><option value="Ajuste">Ajuste por conteo físico</option></select></div>' +
       field("m-cant", "Cantidad (en ajuste: unidades contadas)", 'type="number" min="0" step="1" required', "") + "</div>" +
       '<div class="row">' + field("m-costo", "Costo unitario $ (solo entradas)", 'type="number" min="0" step="0.01"', "") + field("m-motivo", "Motivo o referencia", 'maxlength="120" placeholder="Factura 001-123, proveedor…"', "") + "</div>" +
       '<button class="btn primary">Registrar</button></form>' +
@@ -857,8 +903,9 @@
       field("d-ubi", "Ubicación en bodega", 'placeholder="Estante A3"', x.ubicacion) +
       '<div class="checks" style="margin-bottom:12px"><label><input type="checkbox" id="d-activo"' + (x.activo ? " checked" : "") + "> Visible en el catálogo de talleres</label></div>" +
       '<button class="btn primary">Guardar datos</button></form>' +
+      (state.dBod.length > 1 ? '<form class="card" data-form="inv-traslado"><h2>Trasladar entre bodegas</h2><p class="muted small">' + state.dBod.map(function (b) { return esc(b.nombre) + ": " + (x.sb[b.id] || 0); }).join(" · ") + '</p><div class="row"><div class="field"><label>Desde</label>' + bodSelect("tr-de", bodActual()).replace('name="bodega"', 'name="de"') + '</div><div class="field"><label>Hacia</label>' + bodSelect("tr-a", (state.dBod.filter(function (b) { return b.id !== bodActual(); })[0] || {}).id).replace('name="bodega"', 'name="a"') + "</div></div>" + field("tr-cant", "Cantidad", 'type="number" min="1" step="1" required', "") + '<button class="btn primary">Trasladar</button></form>' : "") +
       '<div class="section-title">Movimientos</div>' + (state.iMovs.length ? '<ul class="lines card">' + state.iMovs.map(function (m) {
-        return "<li><span>" + chip(m.tipo) + " " + esc(m.motivo) + '<br><span class="muted">' + fecha(m.created_at) + (m.costo_unit != null ? " · costo " + usd(m.costo_unit) : "") + "</span></span><span style=\"text-align:right;white-space:nowrap\"><b>" + (m.cantidad > 0 ? "+" : "") + m.cantidad + '</b><br><span class="muted">saldo ' + m.saldo + "</span></span></li>";
+        return "<li><span>" + chip(m.tipo) + " " + esc(m.motivo) + '<br><span class="muted">' + fecha(m.created_at) + (state.dBod.length > 1 ? " · " + esc(bodNombre(m.bodega_id)) : "") + (m.costo_unit != null ? " · costo " + usd(m.costo_unit) : "") + "</span></span><span style=\"text-align:right;white-space:nowrap\"><b>" + (m.cantidad > 0 ? "+" : "") + m.cantidad + '</b><br><span class="muted">saldo ' + m.saldo + "</span></span></li>";
       }).join("") + "</ul>" : "<div class='empty'>Sin movimientos todavía.</div>");
   }
   async function abrirProducto(id) {
@@ -913,10 +960,54 @@
   }
   statusCls["En pausa"] = "";
 
+  // ---------- Reparto: bodegas, repartidores y entregas
+  function viewDBodegas() {
+    return "<h1>Bodegas</h1><p class='muted small'>Cada pedido sale de una bodega. Al confirmar se elige la de la zona del taller; si no hay, la principal.</p>" + state.dBod.map(function (b) {
+      var uds = state.dInv.reduce(function (n, x) { return n + (x.sb[b.id] || 0); }, 0);
+      return '<div class="card"><div class="head"><div><h2>' + esc(b.nombre) + '</h2><div class="muted small">' + esc(b.zona) + " · " + esc(b.direccion) + "<br>" + uds + " unidades · " + count(state.dRep, function (r) { return r.bodega_id === b.id; }) + " repartidores</div></div><span>" + (b.es_demo ? chip("Demo") + " " : "") + chip(b.activa ? "Activa" : "Cerrada") + "</span></div>" +
+        '<div class="actions"><button class="btn sm" data-bodact="' + b.id + '" data-v="' + (b.activa ? "0" : "1") + '">' + (b.activa ? "Cerrar bodega" : "Reabrir bodega") + "</button></div></div>";
+    }).join("") +
+      '<form class="card" data-form="bodega"><h2>Nueva bodega</h2><div class="row">' + field("b-nombre", "Nombre", 'required placeholder="Bodega sur"', "") + '<div class="field"><label for="b-zona">Zona</label><select id="b-zona">' + opts(CFG.zonas) + "</select></div></div>" + field("b-dir", "Dirección", "required", "") + '<button class="btn primary">Crear bodega</button></form>';
+  }
+  statusCls.Activa = "ok"; statusCls.Cerrada = ""; statusCls.Listo = "info"; statusCls.Urgente = "warn";
+  function viewDRepartidores() {
+    return "<h1>Repartidores</h1><p class='muted small'>Solo los verificados ven pedidos. Asígnale a cada uno su bodega.</p>" + (state.dRep.length ? state.dRep.map(function (r) {
+      return '<div class="card"><div class="head"><div><h2>' + esc(r.nombre) + '</h2><div class="muted small">' + esc(r.vehiculo) + " " + esc(r.placa) + (r.telefono ? " · " + esc(r.telefono) : "") + " · " + esc(r.bodega_id ? bodNombre(r.bodega_id) : "sin bodega") + "</div></div><span>" + (r.es_demo ? chip("Demo") + " " : "") + chip(r.verificado ? (r.activo ? "Verificado" : "En pausa") : "Por verificar") + "</span></div>" +
+        '<form class="inline" data-form="rep-bodega" data-id="' + r.id + '">' + bodSelect("", r.bodega_id) + '<button class="btn sm">Asignar bodega</button>' + (r.es_demo ? "" : '<button type="button" class="btn sm ' + (r.verificado ? "" : "primary") + '" data-verifrep="' + r.id + '" data-v="' + (r.verificado ? "0" : "1") + '">' + (r.verificado ? "Quitar verificación" : "Verificar") + "</button>") + "</form></div>";
+    }).join("") : "<div class='empty'>Todavía no hay repartidores registrados.</div>");
+  }
+  function viewREntregas() {
+    var r = state.miRep, mias = state.rPed.filter(function (o) { return o.estado === "En camino" && o.repartidor_id === r.id; }), listos = state.rPed.filter(function (o) { return o.estado === "Listo"; }),
+      dev = state.rPed.filter(function (o) { return o.devolucion_estado === "Solicitada"; }), hechas = count(state.rPed, function (o) { return o.estado === "Entregado" && o.repartidor_id === r.id; });
+    var destino = function (o) { var t = o.taller || {}; return '<p class="small"><b>' + esc(t.nombre) + "</b><br>" + esc(o.direccion || t.direccion) + " · " + esc(o.zona || t.zona) + (t.lat != null ? ' · <a target="_blank" rel="noopener" href="https://maps.google.com/?q=' + t.lat + "," + t.lng + '">Abrir en el mapa</a>' : "") + (t.telefono || t.whatsapp ? ' · <a target="_blank" rel="noopener" href="https://wa.me/' + esc(waNum(t.whatsapp || t.telefono)) + '">WhatsApp</a>' : "") + "</p>"; };
+    var piezas = function (o) { return '<ul class="lines">' + (o.items || []).map(function (l) { return "<li><span>" + l.cantidad + " × " + esc(l.nombre) + ' <span class="muted">· ' + esc(l.detalle) + "</span></span></li>"; }).join("") + "</ul>"; };
+    if (!r.verificado) return "<h1>Entregas</h1><div class='notice'>Tu registro está completo. Verás los pedidos cuando Mekachi verifique tu cuenta.</div>";
+    return "<h1>Entregas</h1><p class='muted small'>" + esc(r.nombre) + " · " + esc(r.bodega ? r.bodega.nombre : "sin bodega asignada") + " · " + hechas + " entregadas en las últimas 24 horas</p>" +
+      '<div class="section-title">En camino (' + mias.length + ")</div>" + (mias.length ? mias.map(function (o) {
+        return '<div class="card"><div class="head"><h2>' + esc(o.num) + "</h2>" + (o.tipo_entrega === "Urgente" ? chip("Urgente") : chip("En camino")) + "</div>" + destino(o) + piezas(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
+          '<form class="inline" data-form="entregar" data-id="' + o.id + '"><input name="codigo" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required placeholder="Código" aria-label="Código de entrega" data-msg="Son 4 dígitos; te los da el taller"><button class="btn sm primary">Confirmar entrega</button></form></div>';
+      }).join("") : '<p class="muted small">No llevas pedidos en este momento.</p>') +
+      '<div class="section-title">Listos para recoger (' + listos.length + ")</div>" + (listos.length ? listos.map(function (o) {
+        return '<div class="card"><div class="head"><h2>' + esc(o.num) + "</h2>" + (o.tipo_entrega === "Urgente" ? chip("Urgente") : chip("Listo")) + '</div><p class="small"><b>Recoger en:</b> ' + esc(o.bodega ? o.bodega.nombre + " · " + o.bodega.direccion : "bodega por asignar") + "</p>" + destino(o) + piezas(o) +
+          '<div class="actions"><button class="btn sm primary" data-tomar="' + o.id + '">Recoger en bodega</button></div></div>';
+      }).join("") : '<p class="muted small">No hay pedidos listos.</p>') +
+      (dev.length ? '<div class="section-title">Devoluciones por recoger (' + dev.length + ")</div>" + dev.map(function (o) {
+        return '<div class="card"><div class="head"><h2>' + esc(o.num) + "</h2>" + chip("Devolución") + "</div>" + destino(o) + '<p class="small">Motivo: ' + esc(o.devolucion_motivo || "sin detalle") + "</p>" + piezas(o) + '<div class="actions"><button class="btn sm primary" data-recogerdev="' + o.id + '">Marcar recogida</button></div></div>';
+      }).join("") : "");
+  }
+  statusCls["Devolución"] = "warn";
+  function viewRPerfil() {
+    var r = state.miRep || {}, p = state.perfil || {};
+    return "<h1>Mi perfil</h1>" + (r.verificado ? '<div class="card"><div class="head"><div><h2>' + (r.activo ? "Estás disponible" : "Estás en pausa") + '</h2><p class="muted small" style="margin:0">' + (r.activo ? "Ves los pedidos listos para recoger." : "No verás pedidos nuevos hasta activarte.") + '</p></div><button class="btn sm ' + (r.activo ? "" : "primary") + '" data-rdisp="' + (r.activo ? "0" : "1") + '">' + (r.activo ? "Pausar" : "Activarme") + "</button></div></div>" : (r.id ? '<div class="notice">Mekachi todavía no verifica tu cuenta.</div>' : "")) +
+      "<form class='card' data-form='r-perfil'><div class='row'>" + field("rp-nombre", "Tu nombre", "required", r.nombre || p.nombre) + field("rp-tel", "Teléfono", TEL + " required", r.telefono || p.telefono) + "</div>" +
+      '<div class="row"><div class="field"><label for="rp-veh">Vehículo</label><select id="rp-veh">' + opts(["Moto", "Auto", "Camioneta"], r.vehiculo) + "</select></div>" + field("rp-placa", "Placa", 'required style="text-transform:uppercase"', r.placa) + "</div>" +
+      '<button class="btn primary block">Guardar</button></form>';
+  }
+
   // ---------- Red: talleres y servicios
   function viewDRed() {
-    return '<div class="chips"><button data-rsub="talleres" aria-pressed="' + (state.rsub === "talleres") + '">Talleres</button><button data-rsub="servicios" aria-pressed="' + (state.rsub === "servicios") + '">Servicios</button><button data-rsub="gruas" aria-pressed="' + (state.rsub === "gruas") + '">Grúas' + (count(state.dProv, function (x) { return !x.verificado; }) ? " · " + count(state.dProv, function (x) { return !x.verificado; }) : "") + "</button></div>" +
-      (state.rsub === "servicios" ? viewDServicios() : state.rsub === "gruas" ? viewDProveedores() : viewDTalleres());
+    return '<div class="chips"><button data-rsub="talleres" aria-pressed="' + (state.rsub === "talleres") + '">Talleres</button><button data-rsub="servicios" aria-pressed="' + (state.rsub === "servicios") + '">Servicios</button><button data-rsub="bodegas" aria-pressed="' + (state.rsub === "bodegas") + '">Bodegas</button><button data-rsub="reparto" aria-pressed="' + (state.rsub === "reparto") + '">Repartidores' + (count(state.dRep, function (x) { return !x.verificado; }) ? " · " + count(state.dRep, function (x) { return !x.verificado; }) : "") + '</button><button data-rsub="gruas" aria-pressed="' + (state.rsub === "gruas") + '">Grúas' + (count(state.dProv, function (x) { return !x.verificado; }) ? " · " + count(state.dProv, function (x) { return !x.verificado; }) : "") + "</button></div>" +
+      (state.rsub === "servicios" ? viewDServicios() : state.rsub === "gruas" ? viewDProveedores() : state.rsub === "bodegas" ? viewDBodegas() : state.rsub === "reparto" ? viewDRepartidores() : viewDTalleres());
   }
 
   // ---------- Clientes: seguimiento de quienes usan la app y de quienes escriben por WhatsApp
@@ -1002,7 +1093,7 @@
   // =====================================================================
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
-    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "g-inicio": viewGInicio, "g-servicios": viewGServicios, "g-perfil": viewGPerfil, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
+    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "g-inicio": viewGInicio, "g-servicios": viewGServicios, "g-perfil": viewGPerfil, "r-entregas": viewREntregas, "r-perfil": viewRPerfil, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
   function render() {
     nav();
     if (map) { map.remove(); map = null; }
@@ -1028,6 +1119,7 @@
     var a = state.acc, dest = a.after || MODES[state.mode].tabs[0][0];
     if (a.rol === "taller" && state.user && !state.miTaller) dest = "perfil";
     if (a.rol === "grua" && state.user && !state.miGrua) dest = "g-perfil";
+    if (a.rol === "repartidor" && state.user && !state.miRep) dest = "r-perfil";
     state.loading = false;
     go(dest, true);
   }
@@ -1062,6 +1154,12 @@
     else if (d.terminar) await done(await call(sb.rpc("mekachi_terminar_solicitud", { p_solicitud: d.terminar })), "Trabajo terminado y registrado.");
     else if (d.rate) await done(await call(sb.rpc("mekachi_calificar", { p_solicitud: d.rate, p_rating: +d.n })), "Gracias por calificar.");
     else if (d.avanzar) await done(await call(sb.rpc("mekachi_despacho_avanzar", { p_pedido: d.avanzar })), "Pedido actualizado.");
+    else if (d.tomar) await done(await call(sb.rpc("mekachi_reparto_tomar", { p_pedido: d.tomar })), "Pedido recogido. Va en camino.");
+    else if (d.recogerdev) await done(await call(sb.rpc("mekachi_reparto_recoger_devolucion", { p_pedido: d.recogerdev })), "Devolución recogida. Entrégala en bodega.");
+    else if (d.rdisp) await done(await call(sb.from("mekachi_repartidores").update({ activo: d.rdisp === "1" }).eq("id", state.miRep.id)), d.rdisp === "1" ? "Estás disponible." : "Quedaste en pausa.");
+    else if (d.verifrep) await done(await call(sb.from("mekachi_repartidores").update({ verificado: d.v === "1", activo: d.v === "1" }).eq("id", d.verifrep)), d.v === "1" ? "Repartidor verificado." : "Verificación retirada.");
+    else if (d.bodact) await done(await call(sb.from("mekachi_bodegas").update({ activa: d.v === "1" }).eq("id", d.bodact)), "Bodega actualizada.");
+    else if (d.devolverPed) { var mot = window.prompt("¿Por qué devuelves el pedido? (pieza equivocada, defecto…)"); if (mot !== null) await done(await call(sb.rpc("mekachi_pedir_devolucion", { p_pedido: d.devolverPed, p_motivo: mot })), "Devolución solicitada. Un repartidor la recogerá."); }
     else if (d.gresp) { if (d.acc !== "rechazar" || window.confirm("¿Devolver esta solicitud a Mekachi para que la reasigne?")) await done(await call(sb.rpc("mekachi_grua_responder", { p_solicitud: d.gresp, p_accion: d.acc })), d.acc === "aceptar" ? "Solicitud aceptada. Buen viaje." : "Solicitud devuelta a Mekachi."); }
     else if (d.gdisp) await done(await call(sb.from("mekachi_gruas_proveedores").update({ activo: d.gdisp === "1" }).eq("id", state.miGrua.id)), d.gdisp === "1" ? "Estás disponible." : "Quedaste en pausa.");
     else if (d.verifgrua) await done(await call(sb.from("mekachi_gruas_proveedores").update({ verificado: d.v === "1", activo: d.v === "1" }).eq("id", d.verifgrua)), d.v === "1" ? "Proveedor verificado." : "Verificación retirada.");
@@ -1134,6 +1232,9 @@
   document.addEventListener("change", function (e) {
     if (e.target.id === "f-esp") { state.fesp = e.target.value; render(); }
     else if (e.target.id === "f-zona") { state.fzona = e.target.value; render(); }
+    else if (e.target.id === "modesel") setMode(e.target.value);
+    else if (e.target.id === "ibod") { state.ibod = e.target.value; aplicarBodega(); render(); }
+    else if (e.target.id === "cbod") { state.cbod = e.target.value; render(); }
     else if (e.target.id === "vsel") { state.vsel = e.target.value; state.draft = null; render(); }
   });
   document.addEventListener("submit", async function (e) {
@@ -1150,6 +1251,7 @@
         if (await call(sb.auth.signInWithPassword({ email: v("a-email"), password: v("a-pass") }))) await afterAuth();
       } else if (kind === "registro") {
         var a = state.acc, pend = { rol: a.rol, nombre: v("r-nombre"), telefono: v("r-tel") };
+        if (a.rol === "repartidor") pend.repartidor = { nombre: v("r-nombre"), telefono: v("r-tel"), vehiculo: v("r-veh"), placa: v("r-placa").toUpperCase() };
         if (a.rol === "grua") {
           if (!checks().length) return toast("Elige al menos un tipo de vehículo.");
           pend.grua = { nombre: v("r-grua"), contacto: v("r-nombre"), telefono: v("r-tel"), whatsapp: v("r-tel"), zona: v("r-zona"), tipos: checks(), tarifa_base: +v("r-tarifa") || 0 };
@@ -1169,7 +1271,7 @@
         if (r.session) await afterAuth();
         else { state.acc.tab = "login"; state.acc.msg = "Te enviamos un correo para confirmar tu cuenta. Ábrelo, confirma y luego inicia sesión aquí."; render(); }
       } else if (kind === "micuenta") {
-        var p = await call(sb.rpc("mekachi_registrar", { p_rol: state.perfil && (state.perfil.rol === "taller" || state.perfil.rol === "grua") ? state.perfil.rol : "conductor", p_nombre: v("c-nombre"), p_telefono: v("c-tel") }));
+        var p = await call(sb.rpc("mekachi_registrar", { p_rol: state.perfil && (state.perfil.rol === "taller" || state.perfil.rol === "grua" || state.perfil.rol === "repartidor") ? state.perfil.rol : "conductor", p_nombre: v("c-nombre"), p_telefono: v("c-tel") }));
         if (p) { state.perfil = p; render(); toast("Datos guardados"); }
       } else if (kind === "perfil") {
         var row = { nombre: v("t-nombre"), contacto: v("t-contacto"), telefono: v("t-tel"), whatsapp: v("t-wa"), horario: v("t-horario"), direccion: v("t-dir"), sector: v("t-sector"), zona: v("t-zona"), especialidades: checks(), lat: v("t-lat") ? +v("t-lat") : null, lng: v("t-lng") ? +v("t-lng") : null };
@@ -1195,6 +1297,20 @@
         await done(await call(sb.rpc("mekachi_cotizar", { p_cotizacion: f.dataset.id, p_mano_obra: +f.elements.mano.value, p_repuestos: +f.elements.rep.value, p_nota: f.elements.nota.value.trim() })), "Precio enviado al cliente");
       } else if (kind === "cotizar-linea") {
         await done(await call(sb.rpc("mekachi_despacho_cotizar_item", { p_item: f.dataset.id, p_precio: +f.elements.precio.value })), "Pieza cotizada");
+      } else if (kind === "entregar") {
+        await done(await call(sb.rpc("mekachi_reparto_entregar", { p_pedido: f.dataset.id, p_codigo: f.elements.codigo.value })), "Entrega confirmada.");
+      } else if (kind === "asignar-ped") {
+        await done(await call(sb.rpc("mekachi_despacho_asignar", { p_pedido: f.dataset.id, p_bodega: f.elements.bodega.value || null, p_repartidor: f.elements.rep.value || null })), "Pedido asignado.");
+      } else if (kind === "rep-bodega") {
+        await done(await call(sb.from("mekachi_repartidores").update({ bodega_id: f.elements.bodega.value }).eq("id", f.dataset.id)), "Bodega asignada.");
+      } else if (kind === "bodega") {
+        if (await done(await call(sb.from("mekachi_bodegas").insert({ nombre: v("b-nombre"), zona: v("b-zona"), direccion: v("b-dir") })), "Bodega creada.")) f.reset();
+      } else if (kind === "inv-traslado") {
+        if (await call(sb.rpc("mekachi_inventario_trasladar", { p_producto: state.iprod, p_origen: f.elements.de.value, p_destino: f.elements.a.value, p_cantidad: parseInt(v("tr-cant"), 10) }))) { await loadMode(); await abrirProducto(state.iprod); toast("Traslado registrado"); }
+      } else if (kind === "r-perfil") {
+        var rrow = { nombre: v("rp-nombre"), telefono: v("rp-tel"), vehiculo: v("rp-veh"), placa: v("rp-placa").toUpperCase() };
+        var rsv = state.miRep ? await call(sb.from("mekachi_repartidores").update(rrow).eq("id", state.miRep.id).select().single()) : await call(sb.from("mekachi_repartidores").insert(Object.assign({ owner_id: state.user.id }, rrow)).select().single());
+        if (rsv && rsv.id) { state.miRep = rsv; render(); toast("Datos guardados"); }
       } else if (kind === "grua-completar") {
         await done(await call(sb.rpc("mekachi_grua_responder", { p_solicitud: f.dataset.id, p_accion: "completar", p_precio: +f.elements.precio.value || null })), "Servicio completado.");
       } else if (kind === "asignar-grua") {
@@ -1208,23 +1324,24 @@
           : await call(sb.from("mekachi_gruas_proveedores").insert(Object.assign({ owner_id: state.user.id }, grow)).select().single());
         if (gsv && gsv.id) { state.miGrua = gsv; render(); toast("Datos guardados"); }
       } else if (kind === "oc") {
+        var bodActualOc = v("oc-bod") || bodActual();
         syncOc();
         if (!state.oc.items.length) return toast("Agrega al menos un repuesto.");
-        var idoc = await call(sb.rpc("mekachi_compra_crear", { p_proveedor: state.oc.proveedor, p_nota: state.oc.nota, p_items: state.oc.items.map(function (it) { return { producto_id: it.id, cantidad: it.cantidad, costo: it.costo }; }) }));
+        var idoc = await call(sb.rpc("mekachi_compra_crear_b", { p_bodega: bodActualOc, p_proveedor: state.oc.proveedor, p_nota: state.oc.nota, p_items: state.oc.items.map(function (it) { return { producto_id: it.id, cantidad: it.cantidad, costo: it.costo }; }) }));
         if (idoc) { state.oc = null; await reload(); toast("Orden de compra creada"); }
       } else if (kind === "conteo") {
         var difs = $$("[data-conteo]").filter(function (el) { return el.value !== el.dataset.sis; }).map(function (el) { return { producto_id: el.dataset.conteo, contado: parseInt(el.value, 10) }; });
         if (!difs.length) return toast("No hay diferencias que ajustar.");
-        var nn = await call(sb.rpc("mekachi_inventario_conteo", { p_items: difs, p_motivo: v("ct-motivo") }));
+        var nn = await call(sb.rpc("mekachi_inventario_conteo_b", { p_items: difs, p_motivo: v("ct-motivo"), p_bodega: state.cbod }));
         if (nn !== null) { await loadMode(); await loadPublic(); render(); toast("Conteo guardado: " + difs.length + (difs.length === 1 ? " ajuste" : " ajustes")); }
       } else if (kind === "compra-pedido") {
-        if (await call(sb.rpc("mekachi_inventario_mover", { p_producto: f.dataset.pid, p_tipo: "Entrada", p_cantidad: parseInt(f.elements.cant.value, 10), p_costo: +f.elements.costo.value, p_motivo: "Compra para el pedido " + f.dataset.num }))) { await loadMode(); await loadPublic(); render(); toast("Compra registrada en bodega"); }
+        if (await call(sb.rpc("mekachi_inventario_mover_b", { p_bodega: f.dataset.bod || bodActual(), p_producto: f.dataset.pid, p_tipo: "Entrada", p_cantidad: parseInt(f.elements.cant.value, 10), p_costo: +f.elements.costo.value, p_motivo: "Compra para el pedido " + f.dataset.num }))) { await loadMode(); await loadPublic(); render(); toast("Compra registrada en bodega"); }
       } else if (kind === "grua") {
         var gr = await call(sb.rpc("mekachi_pedir_grua", { p_nombre: v("g-nombre"), p_telefono: v("g-tel"), p_ubicacion: v("g-ubi"), p_zona: v("g-zona"), p_tipo: v("g-tipo"), p_destino: v("g-dest"), p_lat: v("t-lat") ? +v("t-lat") : null, p_lng: v("t-lng") ? +v("t-lng") : null }));
         if (gr) { state.gruaOk = gr; await loadMode(); render(); window.scrollTo(0, 0); }
       } else if (kind === "inv-mover") {
         var mt = v("m-tipo");
-        if (await call(sb.rpc("mekachi_inventario_mover", { p_producto: state.iprod, p_tipo: mt, p_cantidad: parseInt(v("m-cant"), 10), p_costo: mt === "Entrada" && v("m-costo") ? +v("m-costo") : null, p_motivo: v("m-motivo") }))) { await loadMode(); await loadPublic(); await abrirProducto(state.iprod); toast("Movimiento registrado"); }
+        if (await call(sb.rpc("mekachi_inventario_mover_b", { p_bodega: bodForm(f), p_producto: state.iprod, p_tipo: mt, p_cantidad: parseInt(v("m-cant"), 10), p_costo: mt === "Entrada" && v("m-costo") ? +v("m-costo") : null, p_motivo: v("m-motivo") }))) { await loadMode(); await loadPublic(); await abrirProducto(state.iprod); toast("Movimiento registrado"); }
       } else if (kind === "inv-datos") {
         var okp = await call(sb.from("mekachi_productos").update({ precio: +v("d-precio"), activo: $("#d-activo").checked }).eq("id", state.iprod));
         var oki = okp && await call(sb.from("mekachi_inventario").upsert({ producto_id: state.iprod, stock_minimo: parseInt(v("d-min"), 10) || 0, costo: +v("d-costo"), proveedor: v("d-prov"), ubicacion: v("d-ubi") }, { onConflict: "producto_id" }));
@@ -1233,7 +1350,7 @@
         var np = await call(sb.from("mekachi_productos").insert({ codigo: v("n-codigo"), categoria: v("n-cat"), nombre: v("n-nombre"), compatibilidad: v("n-compat"), precio: +v("n-precio") }).select().single());
         if (!np) return;
         await call(sb.from("mekachi_inventario").upsert({ producto_id: np.id, stock_minimo: parseInt(v("n-min"), 10) || 0, costo: +v("n-costo") }, { onConflict: "producto_id" }));
-        if (parseInt(v("n-stock"), 10) > 0) await call(sb.rpc("mekachi_inventario_mover", { p_producto: np.id, p_tipo: "Entrada", p_cantidad: parseInt(v("n-stock"), 10), p_costo: +v("n-costo"), p_motivo: "Existencias iniciales" }));
+        if (parseInt(v("n-stock"), 10) > 0) await call(sb.rpc("mekachi_inventario_mover_b", { p_bodega: bodActual(), p_producto: np.id, p_tipo: "Entrada", p_cantidad: parseInt(v("n-stock"), 10), p_costo: +v("n-costo"), p_motivo: "Existencias iniciales" }));
         state.inuevo = false; await loadMode(); await loadPublic(); render(); toast("Repuesto creado");
       } else if (kind === "seguimiento") {
         if (await call(sb.rpc("mekachi_guardar_seguimiento", { p_clave: state.dcli, p_etapa: v("sg-etapa"), p_notas: v("sg-notas"), p_proximo: v("sg-prox") || null }))) { await loadMode(); render(); toast("Seguimiento guardado"); }
@@ -1245,7 +1362,7 @@
         await reload(); toast("Mensaje enviado por WhatsApp");
       } else if (kind === "pedido") {
         var items = state.cart.map(function (l) { return l.custom ? { nombre: l.nombre, detalle: l.detalle, cantidad: l.qty } : { producto_id: l.id, cantidad: l.qty }; });
-        var ok = await call(sb.rpc("mekachi_crear_pedido", { p_items: items, p_pago: v("p-pago"), p_nota: v("p-nota"), p_direccion: v("p-dir"), p_zona: v("p-zona"), p_solicitud: state.sug ? state.sug.id : null }));
+        var ok = await call(sb.rpc("mekachi_crear_pedido_v2", { p_tipo: v("p-tipo") || "Ruta", p_items: items, p_pago: v("p-pago"), p_nota: v("p-nota"), p_direccion: v("p-dir"), p_zona: v("p-zona"), p_solicitud: state.sug ? state.sug.id : null }));
         if (!ok) return;
         state.cart = []; saveCart(); state.sug = null; state.q = "";
         go("pedidos", true); toast("Pedido enviado a despacho");
