@@ -159,7 +159,7 @@
       if (me2.data) state.miRep = me2.data;
       var rq = await sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(nombre,detalle,cantidad), taller:mekachi_talleres(nombre,direccion,sector,zona,telefono,whatsapp,lat,lng), bodega:mekachi_bodegas(nombre,direccion,lat,lng)").or("estado.in.(Listo,En camino),devolucion_estado.in.(Solicitada,Recogida),entregado_at.gte." + new Date(Date.now() - 864e5).toISOString()).order("created_at");
       // Despacho ve todo por su rol: aquí solo cuenta lo que le toca a este repartidor.
-      if (!rq.error) state.rPed = rq.data.filter(function (o) { return o.repartidor_id === state.miRep.id || (o.estado === "Listo" && !o.repartidor_id) || o.devolucion_estado === "Solicitada"; });
+      if (!rq.error) state.rPed = rq.data.filter(function (o) { var mb = state.miRep.bodega_id, aqui = !mb || !o.bodega_id || o.bodega_id === mb; return o.repartidor_id === state.miRep.id || (aqui && ((o.estado === "Listo" && !o.repartidor_id) || o.devolucion_estado === "Solicitada")); });
     } else if (state.mode === "grua" && state.miGrua) {
       var gs = await sb.from("mekachi_gruas_solicitudes").select("*").eq("proveedor_id", state.miGrua.id).order("created_at", { ascending: false }).limit(60);
       if (!gs.error) state.gSol = gs.data;
@@ -737,9 +737,15 @@
     var ventas = o.reduce(function (n, x) { return n + +x.total; }, 0);
     var servicios = s.filter(function (x) { return x.estado === "Terminada"; }).reduce(function (n, x) { return n + +(x.precio_final || 0); }, 0);
     var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; };
+    // Margen: precio de venta menos costo promedio, solo en piezas de catálogo de pedidos no cancelados.
+    var vivos = o.filter(function (x) { return x.estado !== "Cancelado"; }), margen = 0, vendido = 0;
+    vivos.forEach(function (x) { (x.items || []).forEach(function (l) { var p = l.producto_id && byId(state.dInv, l.producto_id); if (p && l.precio_unit != null) { vendido += l.cantidad * l.precio_unit; margen += l.cantidad * (l.precio_unit - p.costo); } }); margen += +(x.recargo || 0); vendido += +(x.recargo || 0); });
+    var tiempos = o.filter(function (x) { return x.salida_at && x.entregado_at; }).map(function (x) { return (new Date(x.entregado_at) - new Date(x.salida_at)) / 6e4; });
     return "<h1>Despacho Mekachi</h1><p class='muted small'>Lo que entra por la app, visto desde la operación.</p>" +
       '<div class="section-title">Repuestos</div><div class="kpis">' + k(count(o, function (x) { return x.estado === "Registrado"; }), "Pedidos por atender") +
       k(count(o, function (x) { return pendientes(x) > 0; }), "Con piezas por cotizar") + k(count(o, function (x) { return x.estado === "En camino"; }), "En camino") + k(usd(ventas), "Venta de repuestos") + "</div>" +
+      '<div class="section-title">Distribución</div><div class="kpis">' + k(usd(margen), "Margen bruto de repuestos") + k(vendido ? Math.round(margen / vendido * 100) + " %" : "—", "Margen sobre la venta") + k(tiempos.length ? Math.round(tiempos.reduce(function (n, x) { return n + x; }, 0) / tiempos.length) + " min" : "—", "De bodega al taller, promedio") + k(count(o, function (x) { return x.entregado_at && Date.now() - new Date(x.entregado_at) < 864e5; }), "Entregas en 24 horas") + "</div>" +
+      state.dBod.filter(function (b) { return b.activa; }).map(function (b) { var po = vivos.filter(function (x) { return x.bodega_id === b.id; }); return '<p class="small"><b>' + esc(b.nombre) + ":</b> " + count(po, function (x) { return x.estado === "Listo"; }) + " listos · " + count(po, function (x) { return x.estado === "En camino"; }) + " en camino · " + count(po, function (x) { return x.estado === "Entregado"; }) + " entregados · " + usd(po.reduce(function (n, x) { return n + +x.subtotal; }, 0)) + " sin IVA</p>"; }).join("") +
       '<div class="section-title">Servicios</div><div class="kpis">' + k(s.length, "Solicitudes") + k(count(s, function (x) { return x.estado === "Aceptada"; }), "En curso") +
       k(count(s, function (x) { return x.estado === "Terminada"; }), "Terminados") + k(usd(servicios), "Cobrado por talleres") + "</div>" +
       '<div class="section-title">Red</div><div class="kpis">' + k(count(state.dTalleres, function (t) { return t.verificado; }), "Talleres verificados") + k(count(state.dTalleres, function (t) { return !t.verificado && !t.es_demo; }), "Por verificar") + "</div>" +
@@ -965,7 +971,7 @@
 
   // ---------- Reparto: bodegas, repartidores y entregas
   function viewDBodegas() {
-    return "<h1>Bodegas</h1><p class='muted small'>Cada pedido sale de una bodega. Al confirmar se elige la de la zona del taller; si no hay, la principal.</p>" + state.dBod.map(function (b) {
+    return "<h1>Bodegas</h1><p class='muted small'>Cada pedido sale de una bodega. Al confirmar se elige sola la más cercana al taller, para que la ruta sea corta y la entrega rápida.</p>" + state.dBod.map(function (b) {
       var uds = state.dInv.reduce(function (n, x) { return n + (x.sb[b.id] || 0); }, 0);
       return '<div class="card"><div class="head"><div><h2>' + esc(b.nombre) + '</h2><div class="muted small">' + esc(b.zona) + " · " + esc(b.direccion) + "<br>" + uds + " unidades · " + count(state.dRep, function (r) { return r.bodega_id === b.id; }) + " repartidores</div></div><span>" + (b.es_demo ? chip("Demo") + " " : "") + chip(b.activa ? "Activa" : "Cerrada") + "</span></div>" +
         '<div class="actions"><button class="btn sm" data-bodact="' + b.id + '" data-v="' + (b.activa ? "0" : "1") + '">' + (b.activa ? "Cerrar bodega" : "Reabrir bodega") + "</button></div></div>";
