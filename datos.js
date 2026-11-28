@@ -11,6 +11,8 @@ window.MEKACHI_CONFIG = {
   iva: 0.15,
   // Horas de salida de las rutas de reparto.
   cortes: ["09:00", "12:00", "15:00"],
+  // Recargo sin IVA por entrega urgente. Debe coincidir con recargo_urgente en la tabla mekachi_config.
+  recargoUrgente: 3,
   zonas: ["Norte", "Centro norte", "Sur", "Valles y periferia"],
   pagos: ["Transferencia", "Deuna", "Efectivo contra entrega"]
 };

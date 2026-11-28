@@ -417,7 +417,7 @@ async function procesar(cfg: Cfg, msg: any, nombre: string): Promise<string | nu
 
 // Tareas programadas: retomar conversaciones sin atender, avisar citas respondidas y pedir calificación.
 async function tareas(cfg: Cfg) {
-  const r = { retomadas: 0, citas_avisadas: 0, gruas_avisadas: 0, seguimientos: 0 };
+  const r = { retomadas: 0, citas_avisadas: 0, gruas_avisadas: 0, salidas_avisadas: 0, seguimientos: 0 };
   const limite = new Date(Date.now() - cfg.espera * 60000).toISOString();
   const { data: esperando } = await db.from("mekachi_wa_conversaciones").select("id,telefono,humano_desde").eq("requiere_humano", true).lt("humano_desde", limite);
   for (const c of esperando ?? []) {
@@ -451,6 +451,17 @@ async function tareas(cfg: Cfg) {
     if (pr?.whatsapp) await enviar(cfg, pr.whatsapp, "Solicitud de grúa de Mekachi\n" + resumen);
     await avisarEquipo(cfg, "Nueva solicitud de grúa desde la app" + (pr ? ` (${pr.nombre})` : " SIN PROVEEDOR") + "\n" + resumen);
     r.gruas_avisadas++;
+  }
+  // Pedidos que acaban de salir de bodega: el taller recibe el aviso con su código de entrega.
+  const { data: salidas } = await db.from("mekachi_pedidos").select("id,num,repartidor_nombre,tipo_entrega,taller:mekachi_talleres(nombre,whatsapp,telefono),cod:mekachi_pedido_codigos(codigo)").eq("estado", "En camino").eq("aviso_salida", false);
+  for (const p of salidas ?? []) {
+    // deno-lint-ignore no-explicit-any
+    const t = p.taller as any, cod = (p.cod as any)?.codigo;
+    await db.from("mekachi_pedidos").update({ aviso_salida: true }).eq("id", p.id);
+    const tel = t?.whatsapp || t?.telefono;
+    if (!tel) continue;
+    await enviar(cfg, tel, `Tu pedido ${p.num} de Mekachi ya salió de bodega${p.repartidor_nombre ? " con " + p.repartidor_nombre : ""}.${cod ? `\nCódigo de entrega: ${cod}. Dáselo al repartidor solo cuando recibas el pedido completo.` : ""}`);
+    r.salidas_avisadas++;
   }
   // Seguimiento a los 2 o 3 días de la cita. Va fuera de la ventana de 24 horas, así que exige plantilla aprobada.
   const plantilla = env("WA_PLANTILLA_SEGUIMIENTO");

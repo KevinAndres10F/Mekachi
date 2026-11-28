@@ -157,7 +157,7 @@
     } else if (state.mode === "repartidor" && state.miRep) {
       var me2 = await sb.from("mekachi_repartidores").select("*, bodega:mekachi_bodegas(nombre,direccion)").eq("id", state.miRep.id).maybeSingle();
       if (me2.data) state.miRep = me2.data;
-      var rq = await sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(nombre,detalle,cantidad), taller:mekachi_talleres(nombre,direccion,sector,zona,telefono,whatsapp,lat,lng), bodega:mekachi_bodegas(nombre,direccion)").or("estado.in.(Listo,En camino),devolucion_estado.in.(Solicitada,Recogida),entregado_at.gte." + new Date(Date.now() - 864e5).toISOString()).order("created_at");
+      var rq = await sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(nombre,detalle,cantidad), taller:mekachi_talleres(nombre,direccion,sector,zona,telefono,whatsapp,lat,lng), bodega:mekachi_bodegas(nombre,direccion,lat,lng)").or("estado.in.(Listo,En camino),devolucion_estado.in.(Solicitada,Recogida),entregado_at.gte." + new Date(Date.now() - 864e5).toISOString()).order("created_at");
       // Despacho ve todo por su rol: aquí solo cuenta lo que le toca a este repartidor.
       if (!rq.error) state.rPed = rq.data.filter(function (o) { return o.repartidor_id === state.miRep.id || (o.estado === "Listo" && !o.repartidor_id) || o.devolucion_estado === "Solicitada"; });
     } else if (state.mode === "grua" && state.miGrua) {
@@ -688,7 +688,7 @@
       '<form class="card" data-form="pedido"><h2>Entrega</h2>' + field("p-dir", "Dirección de entrega", 'required placeholder="Calle, número y referencia"', tl.direccion) +
       '<div class="row"><div class="field"><label for="p-zona">Zona</label><select id="p-zona">' + opts(CFG.zonas, tl.zona) + "</select></div>" +
       '<div class="field"><label for="p-pago">Forma de pago</label><select id="p-pago">' + opts(CFG.pagos) + "</select></div></div>" +
-      '<div class="field"><label for="p-tipo">Entrega (el envío va incluido)</label><select id="p-tipo"><option value="Ruta">Ruta programada: sale ' + proximaRuta() + '</option><option value="Urgente">Urgente: sale apenas esté listo</option></select></div>' +
+      '<div class="field"><label for="p-tipo">Entrega (el envío va incluido)</label><select id="p-tipo"><option value="Ruta">Ruta programada: sale ' + proximaRuta() + '</option><option value="Urgente">Urgente: sale apenas esté listo · recargo de ' + usd(CFG.recargoUrgente) + ' + IVA</option></select><p class="small muted" id="p-rec" style="margin:6px 0 0"></p></div>' +
       '<div class="field"><label for="p-nota">Nota para el despacho (opcional)</label><textarea id="p-nota" rows="2" placeholder="Ej.: urgente, el auto está en el elevador"></textarea></div>' +
       '<button class="btn primary block">Confirmar pedido</button></form>';
   }
@@ -701,13 +701,16 @@
   function orderLines(o) {
     return '<ul class="lines">' + (o.items || []).map(function (l) { return "<li><span>" + l.cantidad + " × " + esc(l.nombre) + ' <span class="muted">· ' + esc(l.detalle) + "</span></span><span>" + itemPrice(l) + "</span></li>"; }).join("") + "</ul>";
   }
-  var orderTotal = function (o) { return "<div class='totals' style='margin-bottom:12px'><div class='total' style='border:0;padding:0;font-size:1.05rem'><span>Total con IVA" + (pendientes(o) ? " (parcial)" : "") + "</span><span>" + usd(o.total) + "</span></div></div>"; };
+  var orderTotal = function (o) { return (+o.recargo ? '<p class="small muted" style="margin:0 0 4px">Incluye recargo por entrega urgente: ' + usd(o.recargo) + " + IVA</p>" : "") + "<div class='totals' style='margin-bottom:12px'><div class='total' style='border:0;padding:0;font-size:1.05rem'><span>Total con IVA" + (pendientes(o) ? " (parcial)" : "") + "</span><span>" + usd(o.total) + "</span></div></div>"; };
   function viewPedidos() {
     if (!state.pedidos.length) return "<h1>Pedidos</h1><div class='empty'>" + (state.loading ? "Cargando…" : "Aquí aparecerán tus pedidos.<br><br><button class='btn primary' data-go='catalogo'>Pedir repuestos</button>") + "</div>";
     return "<h1>Pedidos</h1>" + state.pedidos.map(function (o) {
       var cod = o.cod && o.cod.codigo, ent = o.estado === "Entregado";
       return '<div class="card"><div class="head"><div><h2>' + esc(o.num) + '</h2><div class="muted small">' + fecha(o.created_at) + " · " + esc(o.pago) + " · " + (o.tipo_entrega === "Urgente" ? "entrega urgente" : "ruta programada") + "</div></div>" + chip(o.estado) + "</div>" +
         track(o) + orderLines(o) + orderTotal(o) +
+        (o.estado === "En camino" && o.salida_at ? '<p class="small"><b>Salió de bodega a las ' + new Date(o.salida_at).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit" }) + "</b>" + (o.repartidor_nombre ? " con " + esc(o.repartidor_nombre) : "") + ".</p>" : "") +
+        (o.estado === "Listo" ? '<p class="small">Tu pedido está alistado y sale ' + (o.tipo_entrega === "Urgente" ? "en cuanto lo recoja un repartidor" : "en la próxima ruta, " + proximaRuta()) + ".</p>" : "") +
+        (o.estado === "Entregado" && o.entregado_at ? '<p class="small muted">Entregado el ' + fecha(o.entregado_at) + ".</p>" : "") +
         (cod && (o.estado === "Listo" || o.estado === "En camino") ? '<div class="notice"><b>Código de entrega: ' + esc(cod) + "</b><br>Dáselo al repartidor solo cuando recibas el pedido completo.</div>" : "") +
         (o.devolucion_estado ? '<p class="small"><b>Devolución ' + esc(o.devolucion_estado.toLowerCase()) + ".</b> " + esc(o.devolucion_motivo) + "</p>" : "") +
         '<div class="actions"><button class="btn sm" data-repeat="' + o.id + '">Repetir pedido</button>' + (ent && !o.devolucion_estado ? '<button class="btn sm" data-devolver-ped="' + o.id + '">Pedir devolución</button>' : "") + "</div></div>";
@@ -976,18 +979,55 @@
         '<form class="inline" data-form="rep-bodega" data-id="' + r.id + '">' + bodSelect("", r.bodega_id) + '<button class="btn sm">Asignar bodega</button>' + (r.es_demo ? "" : '<button type="button" class="btn sm ' + (r.verificado ? "" : "primary") + '" data-verifrep="' + r.id + '" data-v="' + (r.verificado ? "0" : "1") + '">' + (r.verificado ? "Quitar verificación" : "Verificar") + "</button>") + "</form></div>";
     }).join("") : "<div class='empty'>Todavía no hay repartidores registrados.</div>");
   }
+  // Orden de paradas: primero las urgentes; dentro de cada grupo, la más cercana a la anterior y luego
+  // se prueban inversiones de tramos (2-opt) para acortar el recorrido. Las que no tienen ubicación van al final.
+  function ordenarRuta(origen, pedidos) {
+    var pt = function (o) { var t = o.taller || {}; return t.lat != null ? { lat: t.lat, lng: t.lng } : null; };
+    var largo = function (r) { var d = 0, a = origen; r.forEach(function (o) { if (a) d += dist(a, pt(o)); a = pt(o); }); return d; };
+    var optimo = function (lista, desde) {
+      var falta = lista.slice(), r = [], a = desde;
+      while (falta.length) {
+        var k = 0, mejor = Infinity;
+        falta.forEach(function (o, i) { var d = a ? dist(a, pt(o)) : 0; if (d < mejor) { mejor = d; k = i; } });
+        a = pt(falta[k]); r.push(falta.splice(k, 1)[0]);
+      }
+      var medir = function (x) { var d = 0, q = desde; x.forEach(function (o) { if (q) d += dist(q, pt(o)); q = pt(o); }); return d; };
+      for (var mejora = true, vueltas = 0; mejora && vueltas < 20; vueltas++) {
+        mejora = false;
+        for (var i = 0; i < r.length - 1; i++) for (var j = i + 1; j < r.length; j++) {
+          var alt = r.slice(0, i).concat(r.slice(i, j + 1).reverse(), r.slice(j + 1));
+          if (medir(alt) + 1e-9 < medir(r)) { r = alt; mejora = true; }
+        }
+      }
+      return r;
+    };
+    var con = pedidos.filter(pt), sin = pedidos.filter(function (o) { return !pt(o); });
+    var urg = optimo(con.filter(function (o) { return o.tipo_entrega === "Urgente"; }), origen);
+    var resto = optimo(con.filter(function (o) { return o.tipo_entrega !== "Urgente"; }), urg.length ? pt(urg[urg.length - 1]) : origen);
+    var ruta = urg.concat(resto);
+    return { paradas: ruta.concat(sin), km: origen && ruta.length ? largo(ruta) : 0, sinUbicacion: sin.length, ruta: ruta };
+  }
+  function enlaceRuta(origen, ruta) {
+    if (!ruta.length) return "";
+    var p = function (o) { return o.taller.lat + "," + o.taller.lng; }, fin = ruta[ruta.length - 1], medio = ruta.slice(0, -1).slice(0, 9);
+    return "https://www.google.com/maps/dir/?api=1&travelmode=driving" + (origen ? "&origin=" + origen.lat + "," + origen.lng : "") + "&destination=" + p(fin) + (medio.length ? "&waypoints=" + encodeURIComponent(medio.map(p).join("|")) : "");
+  }
   function viewREntregas() {
     var r = state.miRep, mias = state.rPed.filter(function (o) { return o.estado === "En camino" && o.repartidor_id === r.id; }), listos = state.rPed.filter(function (o) { return o.estado === "Listo"; }),
       dev = state.rPed.filter(function (o) { return o.devolucion_estado === "Solicitada"; }), hechas = count(state.rPed, function (o) { return o.estado === "Entregado" && o.repartidor_id === r.id; });
     var destino = function (o) { var t = o.taller || {}; return '<p class="small"><b>' + esc(t.nombre) + "</b><br>" + esc(o.direccion || t.direccion) + " · " + esc(o.zona || t.zona) + (t.lat != null ? ' · <a target="_blank" rel="noopener" href="https://maps.google.com/?q=' + t.lat + "," + t.lng + '">Abrir en el mapa</a>' : "") + (t.telefono || t.whatsapp ? ' · <a target="_blank" rel="noopener" href="https://wa.me/' + esc(waNum(t.whatsapp || t.telefono)) + '">WhatsApp</a>' : "") + "</p>"; };
     var piezas = function (o) { return '<ul class="lines">' + (o.items || []).map(function (l) { return "<li><span>" + l.cantidad + " × " + esc(l.nombre) + ' <span class="muted">· ' + esc(l.detalle) + "</span></span></li>"; }).join("") + "</ul>"; };
+    var bod = (mias[0] || listos[0] || {}).bodega || {}, origen = state.pos || (bod.lat != null ? { lat: bod.lat, lng: bod.lng } : null);
+    var plan = ordenarRuta(origen, mias); mias = plan.paradas;
+    var planL = ordenarRuta(bod.lat != null ? { lat: bod.lat, lng: bod.lng } : null, listos); listos = planL.paradas;
+    var rutaHtml = plan.ruta.length ? '<div class="card"><h2>Ruta sugerida</h2><p class="small">' + plan.ruta.length + (plan.ruta.length === 1 ? " parada" : " paradas") + " · " + plan.km.toFixed(1).replace(".", ",") + " km en línea recta desde " + (state.pos ? "tu ubicación" : "la bodega") + (plan.ruta.some(function (o) { return o.tipo_entrega === "Urgente"; }) ? " · las urgentes van primero" : "") + (plan.sinUbicacion ? " · " + plan.sinUbicacion + " sin ubicación, al final" : "") + '.</p><div class="actions"><a class="btn sm primary" target="_blank" rel="noopener" href="' + esc(enlaceRuta(origen, plan.ruta)) + '">Abrir la ruta en Google Maps</a><button class="btn sm" data-ubicar="1">' + (state.pos ? "Actualizar mi ubicación" : "Ordenar desde mi ubicación") + "</button></div></div>" : "";
     if (!r.verificado) return "<h1>Entregas</h1><div class='notice'>Tu registro está completo. Verás los pedidos cuando Mekachi verifique tu cuenta.</div>";
     return "<h1>Entregas</h1><p class='muted small'>" + esc(r.nombre) + " · " + esc(r.bodega ? r.bodega.nombre : "sin bodega asignada") + " · " + hechas + " entregadas en las últimas 24 horas</p>" +
-      '<div class="section-title">En camino (' + mias.length + ")</div>" + (mias.length ? mias.map(function (o) {
-        return '<div class="card"><div class="head"><h2>' + esc(o.num) + "</h2>" + (o.tipo_entrega === "Urgente" ? chip("Urgente") : chip("En camino")) + "</div>" + destino(o) + piezas(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
+      '<div class="section-title">En camino (' + mias.length + ")</div>" + rutaHtml + (mias.length ? mias.map(function (o, n) {
+        return '<div class="card"><div class="head"><h2>Parada ' + (n + 1) + " · " + esc(o.num) + "</h2>" + (o.tipo_entrega === "Urgente" ? chip("Urgente") : chip("En camino")) + "</div>" + destino(o) + piezas(o) + (o.nota ? '<p class="muted small">Nota: ' + esc(o.nota) + "</p>" : "") +
           '<form class="inline" data-form="entregar" data-id="' + o.id + '"><input name="codigo" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required placeholder="Código" aria-label="Código de entrega" data-msg="Son 4 dígitos; te los da el taller"><button class="btn sm primary">Confirmar entrega</button></form></div>';
       }).join("") : '<p class="muted small">No llevas pedidos en este momento.</p>') +
-      '<div class="section-title">Listos para recoger (' + listos.length + ")</div>" + (listos.length ? listos.map(function (o) {
+      '<div class="section-title">Listos para recoger (' + listos.length + ")</div>" + (listos.length > 1 ? '<div class="actions" style="margin-bottom:10px"><button class="btn sm primary" data-tomartodos="1">Recoger los ' + listos.length + " pedidos</button></div>" : "") + (listos.length ? listos.map(function (o) {
         return '<div class="card"><div class="head"><h2>' + esc(o.num) + "</h2>" + (o.tipo_entrega === "Urgente" ? chip("Urgente") : chip("Listo")) + '</div><p class="small"><b>Recoger en:</b> ' + esc(o.bodega ? o.bodega.nombre + " · " + o.bodega.direccion : "bodega por asignar") + "</p>" + destino(o) + piezas(o) +
           '<div class="actions"><button class="btn sm primary" data-tomar="' + o.id + '">Recoger en bodega</button></div></div>';
       }).join("") : '<p class="muted small">No hay pedidos listos.</p>') +
@@ -1154,6 +1194,11 @@
     else if (d.terminar) await done(await call(sb.rpc("mekachi_terminar_solicitud", { p_solicitud: d.terminar })), "Trabajo terminado y registrado.");
     else if (d.rate) await done(await call(sb.rpc("mekachi_calificar", { p_solicitud: d.rate, p_rating: +d.n })), "Gracias por calificar.");
     else if (d.avanzar) await done(await call(sb.rpc("mekachi_despacho_avanzar", { p_pedido: d.avanzar })), "Pedido actualizado.");
+    else if (d.tomartodos) {
+      var ids = state.rPed.filter(function (o) { return o.estado === "Listo"; }).map(function (o) { return o.id; }), okn = 0;
+      for (var qi = 0; qi < ids.length; qi++) if (await call(sb.rpc("mekachi_reparto_tomar", { p_pedido: ids[qi] }))) okn++;
+      await reload(); toast(okn + (okn === 1 ? " pedido recogido." : " pedidos recogidos.") + " La ruta ya está ordenada.");
+    }
     else if (d.tomar) await done(await call(sb.rpc("mekachi_reparto_tomar", { p_pedido: d.tomar })), "Pedido recogido. Va en camino.");
     else if (d.recogerdev) await done(await call(sb.rpc("mekachi_reparto_recoger_devolucion", { p_pedido: d.recogerdev })), "Devolución recogida. Entrégala en bodega.");
     else if (d.rdisp) await done(await call(sb.from("mekachi_repartidores").update({ activo: d.rdisp === "1" }).eq("id", state.miRep.id)), d.rdisp === "1" ? "Estás disponible." : "Quedaste en pausa.");
@@ -1206,7 +1251,7 @@
       toast("Buscando tu ubicación…");
       navigator.geolocation.getCurrentPosition(function (p) {
         state.pos = { lat: p.coords.latitude, lng: p.coords.longitude };
-        if (state.view === "talleres") render();
+        if (state.view === "talleres" || state.view === "r-entregas") render();
       }, function () { toast("No pudimos obtener tu ubicación. Revisa los permisos."); }, { timeout: 10000 });
     }
     else if (d.repeat) {
@@ -1233,6 +1278,10 @@
     if (e.target.id === "f-esp") { state.fesp = e.target.value; render(); }
     else if (e.target.id === "f-zona") { state.fzona = e.target.value; render(); }
     else if (e.target.id === "modesel") setMode(e.target.value);
+    else if (e.target.id === "p-tipo") {
+      var tt2 = totals(cartLines()), rec = CFG.recargoUrgente * (1 + CFG.iva);
+      $("#p-rec").textContent = e.target.value === "Urgente" ? "Con entrega urgente el total sube a " + usd(tt2.total + rec) + " (recargo " + usd(CFG.recargoUrgente) + " + IVA)." : "";
+    }
     else if (e.target.id === "ibod") { state.ibod = e.target.value; aplicarBodega(); render(); }
     else if (e.target.id === "cbod") { state.cbod = e.target.value; render(); }
     else if (e.target.id === "vsel") { state.vsel = e.target.value; state.draft = null; render(); }
@@ -1377,7 +1426,12 @@
     var a = document.activeElement;
     if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
     var antes = JSON.stringify([state.solicitudes, state.trabajos, state.pedidos, state.dPedidos, state.dSolicitudes]);
+    var est = {}; state.pedidos.forEach(function (o) { est[o.id] = o.estado; });
     await loadMode();
+    if (state.mode === "taller") state.pedidos.forEach(function (o) {
+      if (est[o.id] && est[o.id] !== o.estado && o.estado === "En camino") toast("Tu pedido " + o.num + " ya salió de bodega" + (o.repartidor_nombre ? " con " + o.repartidor_nombre : "") + ".");
+      else if (est[o.id] && est[o.id] !== o.estado && o.estado === "Listo") toast("Tu pedido " + o.num + " está alistado.");
+    });
     if (antes !== JSON.stringify([state.solicitudes, state.trabajos, state.pedidos, state.dPedidos, state.dSolicitudes])) render();
   }, 20000);
 
