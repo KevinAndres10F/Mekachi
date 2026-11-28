@@ -135,7 +135,7 @@
   // Carrusel: portada, cuadros numerados y cierre.
   function cuadroCarrusel(x, W, H, d, i, im) {
     var cs = d.cuadros || [], c = cs[i] || {}, n = cs.length;
-    if (i === 0) P[im ? "foto" : "titular"](x, W, H, { titular: c.titular, texto: c.texto, foto: c.foto });
+    if (i === 0) P[im ? "foto" : "titular"](x, W, H, { titular: c.titular, texto: c.texto, foto: c.foto }, im);
     else if (i === n - 1) {
       fondoNavy(x, W, H); logo(x, 90, 90, 3.4);
       var y = H * 0.36; y += bloque(x, c.titular, { x: 90, y: y, ancho: W - 180, alto: H * 0.32, size: 124, color: "#fff", ultimo: C.amber }) + 30;

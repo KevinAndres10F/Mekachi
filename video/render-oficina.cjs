@@ -13,18 +13,23 @@ fs.mkdirSync(salida, { recursive: true });
 const tipos = { ".js": "text/javascript; charset=utf-8", ".jpg": "image/jpeg", ".png": "image/png", ".woff2": "font/woff2", ".html": "text/html; charset=utf-8" };
 const nombre = (p) => (p.fecha || "sin-fecha") + " " + String(p.titulo || p.id).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60).toLowerCase();
 
+// Página en blanco del mismo origen, con la tipografía de marca, para que fotos y fuentes carguen.
+const A = "/video/hyperframes/assets/";
+const LIENZO = `<!doctype html><html><head><meta charset="utf-8"><style>@font-face{font-family:"Barlow";font-weight:500;src:url(${A}barlow-500.woff2)}@font-face{font-family:"Barlow";font-weight:700;src:url(${A}barlow-700.woff2)}@font-face{font-family:"Barlow Semi Condensed";font-weight:700;src:url(${A}barlow-semi-condensed-700.woff2)}</style></head><body></body></html>`;
+
 (async () => {
   const srv = http.createServer((q, r) => {
+    if (q.url === "/__lienzo") { r.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return r.end(LIENZO); }
     const f = path.join(raiz, decodeURIComponent(q.url.split("?")[0]));
     fs.readFile(f, (e, d) => { if (e) { r.writeHead(404); r.end(); } else { r.writeHead(200, { "content-type": tipos[path.extname(f)] || "application/octet-stream" }); r.end(d); } });
   }).listen(0);
   const base = "http://localhost:" + srv.address().port;
   const b = await chromium.launch(), pg = await b.newPage();
-  await pg.goto(base + "/video/README.md").catch(() => {});
-  const A = "/video/hyperframes/assets/";
-  await pg.setContent(`<html><head><style>@font-face{font-family:"Barlow";font-weight:500;src:url(${A}barlow-500.woff2)}@font-face{font-family:"Barlow";font-weight:700;src:url(${A}barlow-700.woff2)}@font-face{font-family:"Barlow Semi Condensed";font-weight:700;src:url(${A}barlow-semi-condensed-700.woff2)}</style></head><body></body></html>`);
+  await pg.goto(base + "/__lienzo");
   await pg.addScriptTag({ url: base + "/medios.js" });
   await pg.evaluate((fotos) => window.MekachiMedios.registrar(fotos.map((f) => Object.assign({}, f, { src: "/" + f.src }))), datos.fotos || []);
+  const faltan = await pg.evaluate(async (fotos) => { const r = []; for (const f of fotos) { const ok = await new Promise((y) => { const i = new Image(); i.onload = () => y(true); i.onerror = () => y(false); i.src = "/" + f.src; }); if (!ok) r.push(f.id); } await document.fonts.load('700 80px "Barlow Semi Condensed"'); if (!document.fonts.check('700 80px "Barlow Semi Condensed"')) r.push("tipografía Barlow"); return r; }, datos.fotos || []);
+  if (faltan.length) { console.error("No cargaron: " + faltan.join(", ")); process.exit(1); }
   const hechos = [];
   for (const p of datos.piezas) {
     const n = nombre(p);
