@@ -67,6 +67,7 @@ No se guardan aquí claves, contraseñas ni teléfonos personales. Las claves vi
 - **Remotion y HyperFrames.** Proyectos en `/video` que convierten el mismo guion en MP4. Los dos se probaron y producen el mismo video.
 - **Fotos de archivo.** Cinco fotos de Wikimedia Commons con licencia libre y crédito visible, usadas en plantillas, videos y en seis talleres del demo. Créditos en `fotos/CREDITOS.md`.
 - **Video «Cómo pedir un repuesto»** (30 segundos), incluido en la presentación de ventas.
+- **Render y Drive desde el chat.** `video/render-oficina.cjs` renderiza las piezas de la Oficina (PNG a resolución completa y MP4 con Remotion). Desde el chat de Claude Code se suben a la carpeta «Mekachi · Contenido» de Google Drive y el enlace queda en cada pieza. Primera tanda: 8 imágenes subidas; el video no, por el límite de tamaño del conector.
 
 ---
 
@@ -168,6 +169,16 @@ Quedaron en la base y requieren aprobación del fundador en Supabase:
 
 ---
 
-## 6. Cómo mantener esta bitácora
+## 6. Cómo pedir render y Drive desde el chat
+
+En una sesión de Claude Code con este repositorio y los conectores de Supabase y Google Drive:
+
+1. Pide: «renderiza lo pendiente de la Oficina y guárdalo en Drive».
+2. El asistente lee las publicaciones y videos sin archivo, los renderiza con `video/render-oficina.cjs` y los sube a «Mekachi · Contenido».
+3. Guarda el enlace en cada pieza; la app lo muestra en Contenido como «En Drive».
+
+Límites: el conector de Drive acepta unos 3 MB por archivo desde el chat, así que un video más pesado hay que comprimirlo o bajarlo desde la app. La app no sube a Drive por sí sola: eso requeriría conectar una cuenta de Google con permisos propios.
+
+## 7. Cómo mantener esta bitácora
 
 Agregar una entrada en la sección 2 con la fecha, mover a la sección 3 lo que quedó funcionando y marcar o quitar lo que salga de la sección 4.

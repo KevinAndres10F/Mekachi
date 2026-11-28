@@ -1176,9 +1176,9 @@
       '<div class="card"><h2>Informe del día</h2><p class="small">Dirección revisa ventas, inventario, red y atención, y te deja recomendaciones ordenadas por impacto.</p><div class="actions"><button class="btn primary" data-oinforme="1">Generar informe de hoy</button></div></div>' +
       '<div class="section-title">Recomendaciones abiertas (' + rec.length + ")</div>" + (rec.length ? rec.map(oPieza).join("") : '<p class="muted small">No hay recomendaciones pendientes. Pide el informe del día o conversa con un agente.</p>') +
       '<div class="section-title">Agentes</div><div class="ogrid">' + Object.keys(OAG).map(function (a) { return '<button class="ocard" data-oag="' + a + '">' + ico(OAG[a].icon) + "<span><b>" + OAG[a].nombre + "</b><small>" + OAG[a].desc + "</small></span></button>"; }).join("") + "</div>" +
-      '<div class="section-title">Cuentas conectadas</div><div class="card"><ul class="lines"><li><span>WhatsApp Business</span>' + chip("En pruebas") + "</li><li><span>Instagram y Facebook</span>" + chip("Sin conectar") + "</li><li><span>Perfil de Google</span>" + chip("Sin conectar") + '</li></ul><p class="muted small">Por ahora los agentes preparan el texto y la imagen, y tú publicas. Para que publiquen solos hay que conectar cada cuenta con permisos de Meta y Google.</p></div>';
+      '<div class="section-title">Cuentas conectadas</div><div class="card"><ul class="lines"><li><span>WhatsApp Business</span>' + chip("En pruebas") + "</li><li><span>Instagram y Facebook</span>" + chip("Sin conectar") + "</li><li><span>Perfil de Google</span>" + chip("Sin conectar") + "</li><li><span>Google Drive</span>" + chip("Desde el chat") + '</li></ul><p class="muted small">Por ahora los agentes preparan el texto y la imagen, y tú publicas. Para que publiquen solos hay que conectar cada cuenta con permisos de Meta y Google.</p></div>';
   }
-  statusCls["En pruebas"] = "warn"; statusCls["Sin conectar"] = "";
+  statusCls["En pruebas"] = "warn"; statusCls["Sin conectar"] = ""; statusCls["Desde el chat"] = "info";
   function oPieza(p) {
     var ag = OAG[p.agente] ? OAG[p.agente].nombre : p.agente, pub = p.tipo === "Publicación", vid = p.tipo === "Video", acc = "", M = window.MekachiMedios, prev = "";
     if (p.estado === "Borrador") acc += '<button class="btn sm primary" data-opest="' + p.id + '" data-v="' + (p.tipo === "Recomendación" ? "Hecho" : "Aprobado") + '">' + (p.tipo === "Recomendación" ? "Marcar hecha" : "Aprobar") + "</button>";
@@ -1197,6 +1197,7 @@
     if (p.estado === "Borrador") acc += '<button class="btn sm" data-opest="' + p.id + '" data-v="Descartado">Descartar</button>';
     else acc += '<button class="btn sm danger" data-opdel="' + p.id + '">Eliminar</button>';
     return '<div class="card"><div class="head"><div><h2>' + esc(p.titulo) + '</h2><div class="muted small">' + esc(ag) + (p.red ? " · " + esc(p.red) : "") + (p.fecha ? " · para el " + new Date(p.fecha + "T12:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short" }) : "") + "</div></div>" + chip(p.estado) + "</div>" + prev +
+      ((p.archivos || []).length ? '<p class="small"><b>En Drive:</b> ' + p.archivos.map(function (f) { return '<a target="_blank" rel="noopener" href="' + esc(f.url) + '">' + esc(f.nombre) + "</a>"; }).join(" · ") + (p.carpeta_url ? ' · <a target="_blank" rel="noopener" href="' + esc(p.carpeta_url) + '">Abrir carpeta</a>' : "") + "</p>" : (pub || vid) ? '<p class="muted small">Aún no está en Drive.</p>' : "") +
       '<details class="opieza"' + (p.contenido.length < 420 && !prev ? " open" : "") + "><summary>" + (pub || vid ? "Ver texto de la publicación" : "Ver contenido") + "</summary><div class=\"otext\">" + esc(p.contenido) + '</div></details><div class="actions">' + acc + "</div></div>";
   }
   var oParar = [];
@@ -1210,8 +1211,10 @@
     });
   }
   function viewOContenido() {
+    var sinDrive = count(state.oPiezas, function (p) { return (p.tipo === "Publicación" || p.tipo === "Video") && p.estado !== "Descartado" && !(p.archivos || []).length; });
     var tipos = ["Publicación", "Video", "Recomendación", "Documento"], l = state.oPiezas.filter(function (p) { return p.tipo === state.osub; });
     return "<h1>Contenido</h1><p class='muted small'>Lo que tus agentes dejaron listo para revisar: publicidad, recomendaciones y documentos.</p>" +
+      (sinDrive ? '<div class="notice"><b>' + sinDrive + (sinDrive === 1 ? " pieza no está" : " piezas no están") + ' en Drive.</b> Pide en el chat de Claude Code: «renderiza lo pendiente de la Oficina y guárdalo en Drive».</div>' : "") +
       '<div class="chips">' + tipos.map(function (t) { return '<button data-osub="' + t + '" aria-pressed="' + (state.osub === t) + '">' + ({ "Publicación": "Publicaciones", Video: "Videos", "Recomendación": "Recomendaciones", Documento: "Documentos" })[t] + " · " + count(state.oPiezas, function (p) { return p.tipo === t; }) + "</button>"; }).join("") + "</div>" +
       (l.length ? l.map(oPieza).join("") : "<div class='empty'>" + (state.loading ? "Cargando…" : "Todavía no hay nada aquí. Pídeselo a un agente.") + "</div>");
   }
