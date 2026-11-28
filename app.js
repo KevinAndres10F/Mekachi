@@ -28,7 +28,8 @@
     taller: { label: "Taller", tabs: [["t-inicio", "Inicio", "home"], ["trabajos", "Trabajos", "wrench"], ["catalogo", "Repuestos", "box"], ["pedidos", "Pedidos", "truck"], ["perfil", "Mi taller", "shop"]] },
     repartidor: { label: "Reparto", tabs: [["r-entregas", "Entregas", "truck"], ["r-perfil", "Mi perfil", "user"]] },
     grua: { label: "Grúa", tabs: [["g-inicio", "Inicio", "home"], ["g-servicios", "Servicios", "truck"], ["g-perfil", "Mi grúa", "shop"]] },
-    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-inventario", "Inventario", "box"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"], ["d-red", "Red", "shop"]] }
+    despacho: { label: "Despacho", tabs: [["d-resumen", "Resumen", "chart"], ["d-pedidos", "Pedidos", "truck"], ["d-inventario", "Inventario", "box"], ["d-atencion", "Atención", "chat"], ["d-clientes", "Clientes", "user"], ["d-red", "Red", "shop"]] },
+    oficina: { label: "Oficina", tabs: [["o-inicio", "Oficina", "home"], ["o-agentes", "Agentes", "chat"], ["o-contenido", "Contenido", "list"]] }
   };
   var PARENT = { solicitar: "talleres", carrito: "catalogo", grua: "c-inicio" };
   var VIEWMODE = { solicitar: "conductor", carrito: "taller", grua: "conductor" };
@@ -165,6 +166,18 @@
       if (!gs.error) state.gSol = gs.data;
       var me = await sb.from("mekachi_gruas_proveedores").select("*").eq("id", state.miGrua.id).maybeSingle();
       if (me.data) state.miGrua = me.data;
+    } else if (state.mode === "oficina" && esOficina()) {
+      var oq = await Promise.all([
+        sb.from("mekachi_oficina_piezas").select("*").order("created_at", { ascending: false }).limit(200),
+        sb.from("mekachi_oficina_chats").select("*").order("updated_at", { ascending: false }).limit(80),
+        sb.from("mekachi_pedidos").select("subtotal,recargo,estado,created_at").gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString()),
+        state.ochat ? sb.from("mekachi_oficina_mensajes").select("*").eq("chat_id", state.ochat).order("id") : Promise.resolve({ data: [] })
+      ]);
+      if (!oq[0].error) state.oPiezas = oq[0].data;
+      if (!oq[1].error) state.oChats = oq[1].data;
+      if (!oq[2].error) state.oVentas = oq[2].data;
+      if (!oq[3].error) state.oMsgs = oq[3].data;
+      if (state.oChats.some(function (c) { return c.estado === "pensando"; })) oEsperar();
     } else if (state.mode === "despacho" && esDespacho()) {
       r = await Promise.all([
         sb.from("mekachi_pedidos").select("*, items:mekachi_pedido_items(*), taller:mekachi_talleres(nombre,direccion,zona,telefono), cod:mekachi_pedido_codigos(codigo)").order("created_at", { ascending: false }),
@@ -217,6 +230,10 @@
   }
   var gruaActiva = function (g) { return g.estado !== "Completada" && g.estado !== "Cancelada"; };
   var esDespacho = function () { return !!(state.perfil && state.perfil.rol === "despacho"); };
+  // La Oficina es solo para la administración: no aparece en el selector de perfiles de nadie más.
+  var esOficina = function () { return !!(state.perfil && state.perfil.oficina); };
+  var modos = function () { return Object.keys(MODES).filter(function (m) { return m !== "oficina" || esOficina(); }); };
+  state.oPiezas = []; state.oChats = []; state.oMsgs = []; state.oVentas = []; state.oag = null; state.ochat = null; state.osub = "Publicación";
   async function reload() { await loadMode(); render(); }
   // Tras una escritura: recarga y avisa.
   async function done(res, msg) { if (!res) return false; await reload(); if (msg) toast(msg); return true; }
@@ -240,9 +257,9 @@
   function nav() {
     document.body.classList.toggle("welcome", !state.mode);
     if (!state.mode) return;
-    var modes = Object.keys(MODES).map(function (m) { return '<button data-mode="' + m + '" aria-pressed="' + (state.mode === m) + '">' + MODES[m].label + "</button>"; }).join("");
+    var modes = modos().map(function (m) { return '<button data-mode="' + m + '" aria-pressed="' + (state.mode === m) + '">' + MODES[m].label + "</button>"; }).join("");
     $$(".modes").forEach(function (el) { el.innerHTML = modes; });
-    $("#modesel").innerHTML = Object.keys(MODES).map(function (m) { return '<option value="' + m + '"' + (state.mode === m ? " selected" : "") + ">" + MODES[m].label + "</option>"; }).join("");
+    $("#modesel").innerHTML = modos().map(function (m) { return '<option value="' + m + '"' + (state.mode === m ? " selected" : "") + ">" + MODES[m].label + "</option>"; }).join("");
     var cur = PARENT[state.view] || state.view;
     var tabs = MODES[state.mode].tabs.map(function (t) {
       var b = badgeFor(t[0]);
@@ -260,6 +277,7 @@
     if (m === "repartidor" && !(state.user && (state.miRep || v === "r-perfil"))) return "repartidor";
     if (m === "grua" && !(state.user && (state.miGrua || v === "g-perfil"))) return "grua";
     if (m === "despacho" && !esDespacho()) return "despacho";
+    if (m === "oficina" && !esOficina()) return "despacho";
     return null;
   }
   function go(v, replace) {
@@ -273,7 +291,7 @@
     state.view = v; render(); window.scrollTo(0, 0);
     var h = "#/" + v;
     if (location.hash !== h) { if (replace) history.replaceState(null, "", h); else history.pushState(null, "", h); }
-    if (LIVE[v] || v === "garaje" || v === "d-red" || v === "d-inventario") reload();
+    if (LIVE[v] || v === "garaje" || v === "d-red" || v === "d-inventario" || VIEWMODE[v] === "oficina") reload();
     // El mapa siempre muestra la red al día: talleres recién verificados y calificaciones.
     if (v === "talleres" && state.ready) loadPublic().then(function () { if (state.view === "talleres") render(); });
   }
@@ -1137,9 +1155,108 @@
   }
 
   // =====================================================================
+  // ---------- Oficina: agentes de IA para administrar la empresa
+  var OAG = {
+    direccion: { nombre: "Dirección", icon: "chart", desc: "Mira todas las áreas y te dice qué atender primero.", sug: ["Dame el informe de hoy con recomendaciones", "¿Cuáles son los tres riesgos más grandes ahora?", "¿Qué debería hacer esta semana?"] },
+    marketing: { nombre: "Marketing", icon: "pulse", desc: "Publicidad para redes, campañas y calendario de contenido.", sug: ["Prepara 5 publicaciones para Instagram esta semana", "Campaña para captar talleres en el norte de Quito", "Texto para el perfil de Google de Mekachi"] },
+    ventas: { nombre: "Ventas", icon: "truck", desc: "Quién compra, quién dejó de comprar y a quién llamar.", sug: ["¿Qué talleres debo llamar hoy y qué les ofrezco?", "¿Cómo van las ventas del mes?", "Guion de WhatsApp para reactivar un taller"] },
+    compras: { nombre: "Compras y proveedores", icon: "box", desc: "Qué reponer, qué no rota y cómo mejorar el margen.", sug: ["¿Qué debo comprar esta semana y cuánto?", "¿Qué productos no rotan y cuánto capital tienen parado?", "Busca proveedores de repuestos de marcas chinas en Ecuador"] },
+    legal: { nombre: "Legal y cumplimiento", icon: "list", desc: "Contratos, SRI, datos personales y garantías en Ecuador.", sug: ["¿Qué necesito para constituir la compañía y facturar?", "Borrador de contrato con un taller afiliado", "¿Cómo debo contratar a los repartidores?"] },
+    finanzas: { nombre: "Finanzas", icon: "chart", desc: "Margen, inventario, punto de equilibrio y caja.", sug: ["¿Cuánto margen estoy dejando y dónde se pierde?", "Calcula mi punto de equilibrio", "¿Cuánto capital tengo inmovilizado en inventario?"] }
+  };
+  statusCls.Borrador = "warn"; statusCls.Aprobado = "info"; statusCls.Publicado = "ok"; statusCls.Hecho = "ok"; statusCls.Descartado = "";
+  var oAbiertas = function () { return state.oPiezas.filter(function (p) { return p.tipo === "Recomendación" && p.estado === "Borrador"; }); };
+  function viewOInicio() {
+    var vv = state.oVentas.filter(function (x) { return x.estado !== "Cancelado"; }), venta = vv.reduce(function (n, x) { return n + +x.subtotal + +(x.recargo || 0); }, 0);
+    var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; }, rec = oAbiertas();
+    return "<h1>Oficina Mekachi</h1><p class='muted small'>Tu equipo de agentes de IA para administrar la empresa. Solo tú ves este módulo.</p>" +
+      '<div class="kpis">' + k(usd(venta), "Venta en 30 días, sin IVA") + k(vv.length, "Pedidos en 30 días") + k(count(state.oPiezas, function (p) { return p.tipo === "Publicación" && p.estado === "Borrador"; }), "Publicaciones por aprobar") + k(rec.length, "Recomendaciones abiertas") + "</div>" +
+      '<div class="card"><h2>Informe del día</h2><p class="small">Dirección revisa ventas, inventario, red y atención, y te deja recomendaciones ordenadas por impacto.</p><div class="actions"><button class="btn primary" data-oinforme="1">Generar informe de hoy</button></div></div>' +
+      '<div class="section-title">Recomendaciones abiertas (' + rec.length + ")</div>" + (rec.length ? rec.map(oPieza).join("") : '<p class="muted small">No hay recomendaciones pendientes. Pide el informe del día o conversa con un agente.</p>') +
+      '<div class="section-title">Agentes</div><div class="ogrid">' + Object.keys(OAG).map(function (a) { return '<button class="ocard" data-oag="' + a + '">' + ico(OAG[a].icon) + "<span><b>" + OAG[a].nombre + "</b><small>" + OAG[a].desc + "</small></span></button>"; }).join("") + "</div>" +
+      '<div class="section-title">Cuentas conectadas</div><div class="card"><ul class="lines"><li><span>WhatsApp Business</span>' + chip("En pruebas") + "</li><li><span>Instagram y Facebook</span>" + chip("Sin conectar") + "</li><li><span>Perfil de Google</span>" + chip("Sin conectar") + '</li></ul><p class="muted small">Por ahora los agentes preparan el texto y la imagen, y tú publicas. Para que publiquen solos hay que conectar cada cuenta con permisos de Meta y Google.</p></div>';
+  }
+  statusCls["En pruebas"] = "warn"; statusCls["Sin conectar"] = "";
+  function oPieza(p) {
+    var ag = OAG[p.agente] ? OAG[p.agente].nombre : p.agente, pub = p.tipo === "Publicación", acc = "";
+    if (p.estado === "Borrador") acc += '<button class="btn sm primary" data-opest="' + p.id + '" data-v="' + (p.tipo === "Recomendación" ? "Hecho" : "Aprobado") + '">' + (p.tipo === "Recomendación" ? "Marcar hecha" : "Aprobar") + "</button>";
+    if (pub && p.estado === "Aprobado") acc += '<button class="btn sm primary" data-opest="' + p.id + '" data-v="Publicado">Marcar publicada</button>';
+    acc += '<button class="btn sm" data-ocopy="' + p.id + '">Copiar texto</button>';
+    if (pub) acc += '<button class="btn sm" data-oimg="' + p.id + '">Descargar imagen</button>';
+    if (p.estado === "Borrador") acc += '<button class="btn sm" data-opest="' + p.id + '" data-v="Descartado">Descartar</button>';
+    else acc += '<button class="btn sm danger" data-opdel="' + p.id + '">Eliminar</button>';
+    return '<div class="card"><div class="head"><div><h2>' + esc(p.titulo) + '</h2><div class="muted small">' + esc(ag) + (p.red ? " · " + esc(p.red) : "") + (p.fecha ? " · para el " + new Date(p.fecha + "T12:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short" }) : "") + "</div></div>" + chip(p.estado) + "</div>" +
+      (p.titular ? '<p class="small"><b>Titular de la imagen:</b> ' + esc(p.titular) + "</p>" : "") +
+      '<details class="opieza"' + (p.contenido.length < 420 ? " open" : "") + "><summary>Ver contenido</summary><div class=\"otext\">" + esc(p.contenido) + '</div></details><div class="actions">' + acc + "</div></div>";
+  }
+  function viewOContenido() {
+    var tipos = ["Publicación", "Recomendación", "Documento"], l = state.oPiezas.filter(function (p) { return p.tipo === state.osub; });
+    return "<h1>Contenido</h1><p class='muted small'>Lo que tus agentes dejaron listo para revisar: publicidad, recomendaciones y documentos.</p>" +
+      '<div class="chips">' + tipos.map(function (t) { return '<button data-osub="' + t + '" aria-pressed="' + (state.osub === t) + '">' + ({ "Publicación": "Publicaciones", "Recomendación": "Recomendaciones", Documento: "Documentos" })[t] + " · " + count(state.oPiezas, function (p) { return p.tipo === t; }) + "</button>"; }).join("") + "</div>" +
+      (l.length ? l.map(oPieza).join("") : "<div class='empty'>" + (state.loading ? "Cargando…" : "Todavía no hay nada aquí. Pídeselo a un agente.") + "</div>");
+  }
+  function viewOAgentes() {
+    if (!state.oag) return "<h1>Agentes</h1><p class='muted small'>Cada agente consulta los datos reales de Mekachi antes de responder.</p>" + '<div class="ogrid">' + Object.keys(OAG).map(function (a) {
+      return '<button class="ocard" data-oag="' + a + '">' + ico(OAG[a].icon) + "<span><b>" + OAG[a].nombre + "</b><small>" + OAG[a].desc + " · " + count(state.oChats, function (c) { return c.agente === a; }) + " conversaciones</small></span></button>"; }).join("") + "</div>";
+    var a = OAG[state.oag], chats = state.oChats.filter(function (c) { return c.agente === state.oag; }), c = byId(state.oChats, state.ochat);
+    return '<button class="back" data-oag="">← Todos los agentes</button><h1>' + a.nombre + "</h1><p class='muted small'>" + a.desc + "</p>" +
+      (chats.length ? '<div class="field"><label for="ochatsel">Conversación</label><select id="ochatsel"><option value="">Conversación nueva</option>' + chats.map(function (x) { return '<option value="' + x.id + '"' + (x.id === state.ochat ? " selected" : "") + ">" + esc(x.titulo || "Sin título") + " · " + new Date(x.updated_at).toLocaleDateString("es-EC", { day: "numeric", month: "short" }) + "</option>"; }).join("") + "</select></div>" : "") +
+      '<div class="chat" id="ochat">' + state.oMsgs.map(function (m) { return '<div class="bubble' + (m.rol === "user" ? " out" : "") + '"><small>' + (m.rol === "user" ? "Tú" : a.nombre) + "</small>" + esc(m.texto) + "</div>"; }).join("") +
+      (c && c.estado === "pensando" ? '<div class="bubble"><small>' + a.nombre + "</small>Trabajando en tu pedido… puede tardar uno o dos minutos.</div>" : "") + "</div>" +
+      (c && c.estado === "error" ? '<div class="notice">' + esc(c.error || "No se pudo completar la respuesta.") + "</div>" : "") +
+      (!state.oMsgs.length ? '<div class="chips" style="flex-wrap:wrap;overflow:visible">' + a.sug.map(function (t) { return '<button data-osug="' + esc(t) + '">' + esc(t) + "</button>"; }).join("") + "</div>" : "") +
+      '<form class="card" data-form="o-enviar"><div class="field"><label for="o-txt">Tu mensaje</label><textarea id="o-txt" rows="3" required placeholder="Escribe lo que necesitas"></textarea></div><button class="btn primary"' + (c && c.estado === "pensando" ? " disabled" : "") + ">Enviar</button></form>";
+  }
+  var oTimer = null;
+  function oEsperar() {
+    if (oTimer) return;
+    oTimer = setTimeout(async function () {
+      oTimer = null;
+      if (state.mode !== "oficina") return;
+      var antes = state.oPiezas.length, pens = count(state.oChats, function (c) { return c.estado === "pensando"; });
+      await loadMode();
+      var a = document.activeElement, escribe = a && a.id === "o-txt" && a.value;
+      if (count(state.oChats, function (c) { return c.estado === "pensando"; }) < pens) {
+        if (state.oPiezas.length > antes) toast("Tu agente dejó " + (state.oPiezas.length - antes) + " pieza(s) en Contenido.");
+        if (!escribe) { render(); oBajar(); }
+      }
+    }, 3500);
+  }
+  function oBajar() { var el = $("#ochat"); if (el) el.scrollTop = el.scrollHeight; }
+  async function oEnviar(agente, texto) {
+    var ses = await sb.auth.getSession();
+    if (!ses.data.session) return toast("Tu sesión expiró. Vuelve a entrar.");
+    state.oag = agente; state.oMsgs = state.oMsgs.concat([{ rol: "user", texto: texto }]);
+    try {
+      var resp = await fetch(CFG.supabaseUrl + "/functions/v1/mekachi-oficina", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.supabaseKey, Authorization: "Bearer " + ses.data.session.access_token }, body: JSON.stringify({ agente: agente, mensaje: texto, chat_id: state.ochat || undefined }) });
+      var j = await resp.json().catch(function () { return {}; });
+      if (!resp.ok) { state.oMsgs.pop(); toast(j.error || "No se pudo enviar el mensaje."); return render(); }
+      state.ochat = j.chat_id;
+    } catch (err) { state.oMsgs.pop(); toast("Sin conexión con el agente."); return render(); }
+    if (state.view !== "o-agentes") go("o-agentes"); else { await loadMode(); render(); }
+    oBajar();
+  }
+  // Imagen cuadrada con la marca para acompañar una publicación.
+  function oImagen(p) {
+    var c = document.createElement("canvas"), W = 1080; c.width = W; c.height = W; var x = c.getContext("2d");
+    var g = x.createLinearGradient(0, 0, W, W); g.addColorStop(0, "#0b2540"); g.addColorStop(1, "#123a63"); x.fillStyle = g; x.fillRect(0, 0, W, W);
+    x.fillStyle = "rgba(255,184,28,.10)"; x.beginPath(); x.arc(W - 120, 160, 330, 0, 7); x.fill();
+    x.save(); x.translate(90, 90); x.scale(3.4, 3.4); x.fillStyle = "#ffb81c"; x.fill(new Path2D("M16 2l12.1 7v14L16 30 3.9 23V9z")); x.strokeStyle = "#0b2540"; x.lineWidth = 3.4; x.lineCap = "round"; x.lineJoin = "round"; x.stroke(new Path2D("M10 16.5l4.2 4.2L22.5 12")); x.restore();
+    var head = '"Barlow Semi Condensed", Barlow, system-ui, sans-serif';
+    x.fillStyle = "#fff"; x.font = "700 64px " + head; x.textBaseline = "middle"; x.fillText("Mekachi", 220, 146);
+    var t = (p.titular || p.titulo || "").trim(), size = t.length > 44 ? 92 : t.length > 26 ? 112 : 136, lines = [];
+    x.font = "700 " + size + "px " + head;
+    t.split(/\s+/).forEach(function (w) { var l = lines.length ? lines[lines.length - 1] : null; if (l != null && x.measureText(l + " " + w).width <= W - 180) lines[lines.length - 1] = l + " " + w; else lines.push(w); });
+    var lh = size * 1.08, y0 = W / 2 - (lines.length - 1) * lh / 2 + 20;
+    lines.forEach(function (l, i) { x.fillStyle = i === lines.length - 1 && lines.length > 1 ? "#ffb81c" : "#fff"; x.fillText(l, 90, y0 + i * lh); });
+    x.fillStyle = "#ffb81c"; x.fillRect(90, W - 170, 120, 10);
+    x.fillStyle = "#a9bdd6"; x.font = "500 38px Barlow, system-ui, sans-serif"; x.fillText("Mecánicas de confianza. Repuestos garantizados.", 90, W - 105);
+    c.toBlob(function (b) { var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "mekachi-" + (p.red || "post").toLowerCase() + "-" + p.id.slice(0, 6) + ".png"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000); toast("Imagen descargada"); }, "image/png");
+  }
+
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
-    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "g-inicio": viewGInicio, "g-servicios": viewGServicios, "g-perfil": viewGPerfil, "r-entregas": viewREntregas, "r-perfil": viewRPerfil, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta };
+    "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "g-inicio": viewGInicio, "g-servicios": viewGServicios, "g-perfil": viewGPerfil, "r-entregas": viewREntregas, "r-perfil": viewRPerfil, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta, "o-inicio": viewOInicio, "o-agentes": viewOAgentes, "o-contenido": viewOContenido };
   function render() {
     nav();
     if (map) { map.remove(); map = null; }
@@ -1228,6 +1345,14 @@
     else if ("inv" in d) await abrirProducto(d.inv);
     else if (d.ifil) { state.ifil = d.ifil; render(); }
     else if (d.rsub) { state.rsub = d.rsub; render(); }
+    else if ("oag" in d) { state.oag = d.oag || null; state.ochat = null; state.oMsgs = []; go("o-agentes"); }
+    else if (d.osug) { b.disabled = true; await oEnviar(state.oag, d.osug); }
+    else if (d.oinforme) { b.disabled = true; state.ochat = null; state.oMsgs = []; toast("Dirección está preparando el informe…"); await oEnviar("direccion", "Dame el informe de hoy: qué pasó en ventas, inventario, red de talleres y atención, qué te preocupa y tus recomendaciones ordenadas por impacto."); }
+    else if (d.osub) { state.osub = d.osub; render(); }
+    else if (d.opest) await done(await call(sb.from("mekachi_oficina_piezas").update({ estado: d.v }).eq("id", d.opest)), "Marcado como " + d.v.toLowerCase() + ".");
+    else if (d.opdel) { if (window.confirm("¿Eliminar esta pieza?")) await done(await call(sb.from("mekachi_oficina_piezas").delete().eq("id", d.opdel)), "Eliminado."); }
+    else if (d.ocopy) { o = byId(state.oPiezas, d.ocopy); try { await navigator.clipboard.writeText(o.contenido); toast("Texto copiado"); } catch (err) { toast("No se pudo copiar. Selecciona el texto a mano."); } }
+    else if (d.oimg) { o = byId(state.oPiezas, d.oimg); if (document.fonts && document.fonts.load) { try { await document.fonts.load('700 100px "Barlow Semi Condensed"'); } catch (err) {} } oImagen(o); }
     else if (d.inuevo) { state.inuevo = !state.inuevo; render(); }
     else if (d.icsv) csvDescarga("mekachi-inventario", [["Código", "codigo"], ["Categoría", "cat"], ["Nombre", "nombre"], ["Compatibilidad", "compat"], ["Existencias", "stock"], ["Mínimo", "minimo"], ["Costo", "costo"], ["Precio", "precio"], ["Proveedor", "proveedor"], ["Ubicación", "ubicacion"], ["Activo", "activo"]], invFiltrado());
     else if ("cli" in d) await abrirCliente(d.cli);
@@ -1288,6 +1413,7 @@
       var tt2 = totals(cartLines()), rec = CFG.recargoUrgente * (1 + CFG.iva);
       $("#p-rec").textContent = e.target.value === "Urgente" ? "Con entrega urgente el total sube a " + usd(tt2.total + rec) + " (recargo " + usd(CFG.recargoUrgente) + " + IVA)." : "";
     }
+    else if (e.target.id === "ochatsel") { state.ochat = e.target.value || null; state.oMsgs = []; reload().then(oBajar); }
     else if (e.target.id === "ibod") { state.ibod = e.target.value; aplicarBodega(); render(); }
     else if (e.target.id === "cbod") { state.cbod = e.target.value; render(); }
     else if (e.target.id === "vsel") { state.vsel = e.target.value; state.draft = null; render(); }
@@ -1358,6 +1484,8 @@
         await done(await call(sb.rpc("mekachi_despacho_asignar", { p_pedido: f.dataset.id, p_bodega: f.elements.bodega.value || null, p_repartidor: f.elements.rep.value || null })), "Pedido asignado.");
       } else if (kind === "rep-bodega") {
         await done(await call(sb.from("mekachi_repartidores").update({ bodega_id: f.elements.bodega.value }).eq("id", f.dataset.id)), "Bodega asignada.");
+      } else if (kind === "o-enviar") {
+        var otx = v("o-txt"); if (otx) await oEnviar(state.oag, otx);
       } else if (kind === "bodega") {
         if (await done(await call(sb.from("mekachi_bodegas").insert({ nombre: v("b-nombre"), zona: v("b-zona"), direccion: v("b-dir") })), "Bodega creada.")) f.reset();
       } else if (kind === "inv-traslado") {

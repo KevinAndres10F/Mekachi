@@ -246,3 +246,14 @@ h1 .status { vertical-align: middle; font-family: var(--font); }
   .topbar .logo span { display: inline; }
 }
 .inline select { max-width: 190px; padding: 8px 10px; }
+
+/* ---------- Oficina: agentes y contenido ---------- */
+.opieza { margin: 8px 0 12px; }
+.opieza summary { cursor: pointer; color: var(--blue); font-weight: 600; font-size: .92rem; }
+.otext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .95rem; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 8px; max-height: 420px; overflow-y: auto; }
+.ogrid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom: 8px; }
+.ocard { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--radius); padding: 14px 16px; font: 500 1rem var(--font); cursor: pointer; }
+.ocard:hover { border-color: var(--blue); }
+.ocard .ico { width: 28px; height: 28px; color: var(--blue); flex: none; }
+.ocard b { display: block; font: 700 1.1rem var(--font-head); }
+.ocard small { color: var(--muted); font-size: .88rem; }
