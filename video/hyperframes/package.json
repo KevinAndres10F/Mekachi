@@ -1,0 +1,12 @@
+{
+  "name": "mekachi-video-hyperframes",
+  "private": true,
+  "type": "module",
+  "description": "Videos de Mekachi con HyperFrames a partir de un guion JSON",
+  "scripts": {
+    "generar": "node generar.mjs",
+    "dev": "npx --yes hyperframes@0.9.104 preview",
+    "check": "npx --yes hyperframes@0.9.104 check",
+    "render": "npx --yes hyperframes@0.9.104 render -o out/video.mp4"
+  }
+}

@@ -1,0 +1,5 @@
+node_modules/
+video/remotion/out/
+video/hyperframes/out/
+video/hyperframes/.hyperframes/
+video/hyperframes/renders/

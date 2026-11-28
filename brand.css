@@ -257,3 +257,8 @@ h1 .status { vertical-align: middle; font-family: var(--font); }
 .ocard .ico { width: 28px; height: 28px; color: var(--blue); flex: none; }
 .ocard b { display: block; font: 700 1.1rem var(--font-head); }
 .ocard small { color: var(--muted); font-size: .88rem; }
+.oprev { display: flex; gap: 8px; overflow-x: auto; margin: 10px 0 6px; padding-bottom: 4px; }
+.oprev canvas { flex: none; width: 220px; height: auto; border-radius: 10px; border: 1px solid var(--line); background: var(--navy); }
+.oprev.historia canvas { width: 160px; }
+.oprev.vertical canvas { width: 200px; }
+.tfoto { display: block; width: 100%; aspect-ratio: 16 / 7; object-fit: cover; border-radius: 10px; margin-bottom: 8px; background: var(--bg); }

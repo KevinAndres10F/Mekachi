@@ -84,7 +84,7 @@
   // =====================================================================
   // DATOS
   // =====================================================================
-  function mapTaller(t) { return { id: t.id, nombre: t.nombre, sector: t.sector, zona: t.zona, lat: t.lat, lng: t.lng, esp: t.especialidades || t.esp || [], verificado: !!t.verificado, demo: t.es_demo !== false && (t.es_demo || !t.owner_id), whatsapp: t.whatsapp || "", horario: t.horario || "", rs: t.rating_suma || 0, rt: t.rating_total || 0 }; }
+  function mapTaller(t) { return { id: t.id, nombre: t.nombre, sector: t.sector, zona: t.zona, lat: t.lat, lng: t.lng, esp: t.especialidades || t.esp || [], verificado: !!t.verificado, demo: t.es_demo !== false && (t.es_demo || !t.owner_id), whatsapp: t.whatsapp || "", horario: t.horario || "", rs: t.rating_suma || 0, rt: t.rating_total || 0, foto: t.foto || "" }; }
   async function loadPublic() {
     var local = function () {
       state.talleres = window.MEKACHI_TALLERES.map(mapTaller);
@@ -94,9 +94,11 @@
     try {
       var r = await Promise.all([
         sb.from("mekachi_talleres").select("*").eq("activo", true).order("nombre"),
-        sb.from("mekachi_productos").select("*").eq("activo", true).order("categoria").order("nombre")
+        sb.from("mekachi_productos").select("*").eq("activo", true).order("categoria").order("nombre"),
+        sb.from("mekachi_fotos").select("*").order("id")
       ]);
       if (r[0].error || r[1].error) return local();
+      if (!r[2].error) { state.fotos = r[2].data; window.MekachiMedios.registrar(state.fotos); }
       state.talleres = r[0].data.filter(function (t) { return t.verificado || t.es_demo; }).map(mapTaller);
       state.productos = r[1].data.map(function (p) { return { id: p.id, cat: p.categoria, nombre: p.nombre, compat: p.compatibilidad, precio: +p.precio, disp: !!p.disponible }; });
     } catch (e) { local(); }
@@ -475,7 +477,7 @@
       '<button class="btn sm block" data-ubicar="1" style="margin-top:10px">' + (state.pos ? "Ordenado por cercanía · actualizar ubicación" : "Usar mi ubicación para ordenar por cercanía") + "</button></div>" +
       '<div class="list" id="tlist">' + (list.length ? list.map(function (x) {
         var t = x.t;
-        return '<div class="tcard" id="tc-' + t.id + '"><div><div class="name">' + esc(t.nombre) + " " + (t.demo ? chip("Ejemplo") : chip("Verificado")) + '</div><div class="meta">' + esc(t.sector) + " · " + esc(t.zona) +
+        return '<div class="tcard" id="tc-' + t.id + '"><div>' + (t.foto ? '<img class="tfoto" loading="lazy" alt="Foto de ejemplo de un taller" src="' + esc(t.foto) + '">' : "") + '<div class="name">' + esc(t.nombre) + " " + (t.demo ? chip("Ejemplo") : chip("Verificado")) + '</div><div class="meta">' + esc(t.sector) + " · " + esc(t.zona) +
           (x.d != null ? " · a " + x.d.toFixed(1).replace(".", ",") + " km" : "") + (t.horario ? " · " + esc(t.horario) : "") + "</div>" +
           (t.rt ? '<div class="meta">' + estrellas(t.rs / t.rt) + " " + (t.rs / t.rt).toFixed(1).replace(".", ",") + " (" + t.rt + ")</div>" : "") + '<div class="tags">' +
           t.esp.map(function (e) { return "<span" + (e === state.fesp ? ' class="on"' : "") + ">" + esc(e) + "</span>"; }).join("") + "</div></div>" + selBtn(t.id) + "</div>";
@@ -1170,7 +1172,7 @@
     var vv = state.oVentas.filter(function (x) { return x.estado !== "Cancelado"; }), venta = vv.reduce(function (n, x) { return n + +x.subtotal + +(x.recargo || 0); }, 0);
     var k = function (v, l) { return '<div class="kpi"><b>' + v + "</b><span>" + l + "</span></div>"; }, rec = oAbiertas();
     return "<h1>Oficina Mekachi</h1><p class='muted small'>Tu equipo de agentes de IA para administrar la empresa. Solo tú ves este módulo.</p>" +
-      '<div class="kpis">' + k(usd(venta), "Venta en 30 días, sin IVA") + k(vv.length, "Pedidos en 30 días") + k(count(state.oPiezas, function (p) { return p.tipo === "Publicación" && p.estado === "Borrador"; }), "Publicaciones por aprobar") + k(rec.length, "Recomendaciones abiertas") + "</div>" +
+      '<div class="kpis">' + k(usd(venta), "Venta en 30 días, sin IVA") + k(vv.length, "Pedidos en 30 días") + k(count(state.oPiezas, function (p) { return (p.tipo === "Publicación" || p.tipo === "Video") && p.estado === "Borrador"; }), "Publicaciones y videos por aprobar") + k(rec.length, "Recomendaciones abiertas") + "</div>" +
       '<div class="card"><h2>Informe del día</h2><p class="small">Dirección revisa ventas, inventario, red y atención, y te deja recomendaciones ordenadas por impacto.</p><div class="actions"><button class="btn primary" data-oinforme="1">Generar informe de hoy</button></div></div>' +
       '<div class="section-title">Recomendaciones abiertas (' + rec.length + ")</div>" + (rec.length ? rec.map(oPieza).join("") : '<p class="muted small">No hay recomendaciones pendientes. Pide el informe del día o conversa con un agente.</p>') +
       '<div class="section-title">Agentes</div><div class="ogrid">' + Object.keys(OAG).map(function (a) { return '<button class="ocard" data-oag="' + a + '">' + ico(OAG[a].icon) + "<span><b>" + OAG[a].nombre + "</b><small>" + OAG[a].desc + "</small></span></button>"; }).join("") + "</div>" +
@@ -1178,21 +1180,39 @@
   }
   statusCls["En pruebas"] = "warn"; statusCls["Sin conectar"] = "";
   function oPieza(p) {
-    var ag = OAG[p.agente] ? OAG[p.agente].nombre : p.agente, pub = p.tipo === "Publicación", acc = "";
+    var ag = OAG[p.agente] ? OAG[p.agente].nombre : p.agente, pub = p.tipo === "Publicación", vid = p.tipo === "Video", acc = "", M = window.MekachiMedios, prev = "";
     if (p.estado === "Borrador") acc += '<button class="btn sm primary" data-opest="' + p.id + '" data-v="' + (p.tipo === "Recomendación" ? "Hecho" : "Aprobado") + '">' + (p.tipo === "Recomendación" ? "Marcar hecha" : "Aprobar") + "</button>";
-    if (pub && p.estado === "Aprobado") acc += '<button class="btn sm primary" data-opest="' + p.id + '" data-v="Publicado">Marcar publicada</button>';
+    if ((pub || vid) && p.estado === "Aprobado") acc += '<button class="btn sm primary" data-opest="' + p.id + '" data-v="Publicado">Marcar publicad' + (vid ? "o" : "a") + "</button>";
     acc += '<button class="btn sm" data-ocopy="' + p.id + '">Copiar texto</button>';
-    if (pub) acc += '<button class="btn sm" data-oimg="' + p.id + '">Descargar imagen</button>';
+    if (pub) {
+      var n = M.cuantos(p), d = M.normalizar(p);
+      acc += '<button class="btn sm" data-oimg="' + p.id + '">Descargar ' + (n > 1 ? n + " imágenes" : "imagen") + "</button>";
+      prev = '<div class="oprev ' + d.formato + '">' + Array.apply(null, Array(n)).map(function (_, i) { return '<canvas data-oprev="' + p.id + '" data-i="' + i + '" aria-label="Vista previa de la imagen"></canvas>'; }).join("") + '</div><p class="muted small">Plantilla ' + esc(d.plantilla) + " · formato " + esc(d.formato) + (n > 1 ? " · " + n + " cuadros" : "") + "</p>";
+    }
+    if (vid) {
+      var g = M.guion(p);
+      acc += '<button class="btn sm" data-ovid="' + p.id + '">Reproducir</button><button class="btn sm" data-ovdl="' + p.id + '">Descargar video</button><button class="btn sm" data-oguion="' + p.id + '">Exportar guion</button>';
+      prev = '<div class="oprev ' + g.formato + '"><canvas data-oprev="' + p.id + '" data-video="1" aria-label="Vista previa del video"></canvas></div><p class="muted small">Video ' + (g.formato === "historia" ? "vertical" : "cuadrado") + " · " + g.escenas.length + " escenas · " + Math.round(g.total) + " segundos</p>";
+    }
     if (p.estado === "Borrador") acc += '<button class="btn sm" data-opest="' + p.id + '" data-v="Descartado">Descartar</button>';
     else acc += '<button class="btn sm danger" data-opdel="' + p.id + '">Eliminar</button>';
-    return '<div class="card"><div class="head"><div><h2>' + esc(p.titulo) + '</h2><div class="muted small">' + esc(ag) + (p.red ? " · " + esc(p.red) : "") + (p.fecha ? " · para el " + new Date(p.fecha + "T12:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short" }) : "") + "</div></div>" + chip(p.estado) + "</div>" +
-      (p.titular ? '<p class="small"><b>Titular de la imagen:</b> ' + esc(p.titular) + "</p>" : "") +
-      '<details class="opieza"' + (p.contenido.length < 420 ? " open" : "") + "><summary>Ver contenido</summary><div class=\"otext\">" + esc(p.contenido) + '</div></details><div class="actions">' + acc + "</div></div>";
+    return '<div class="card"><div class="head"><div><h2>' + esc(p.titulo) + '</h2><div class="muted small">' + esc(ag) + (p.red ? " · " + esc(p.red) : "") + (p.fecha ? " · para el " + new Date(p.fecha + "T12:00:00").toLocaleDateString("es-EC", { day: "numeric", month: "short" }) : "") + "</div></div>" + chip(p.estado) + "</div>" + prev +
+      '<details class="opieza"' + (p.contenido.length < 420 && !prev ? " open" : "") + "><summary>" + (pub || vid ? "Ver texto de la publicación" : "Ver contenido") + "</summary><div class=\"otext\">" + esc(p.contenido) + '</div></details><div class="actions">' + acc + "</div></div>";
+  }
+  var oParar = [];
+  // Pinta las vistas previas después de cada render: imágenes fijas y el primer cuadro de cada video.
+  function oPreviews() {
+    oParar.forEach(function (f) { f(); }); oParar = [];
+    $$("canvas[data-oprev]").forEach(function (cv) {
+      var p = byId(state.oPiezas, cv.dataset.oprev), M = window.MekachiMedios; if (!p) return;
+      if (cv.dataset.video) M.reproducir(p, cv).then(function (stop) { setTimeout(stop, 900); });
+      else M.imagen(p, +cv.dataset.i || 0).then(function (c) { cv.width = c.width / 2; cv.height = c.height / 2; cv.getContext("2d").drawImage(c, 0, 0, cv.width, cv.height); });
+    });
   }
   function viewOContenido() {
-    var tipos = ["Publicación", "Recomendación", "Documento"], l = state.oPiezas.filter(function (p) { return p.tipo === state.osub; });
+    var tipos = ["Publicación", "Video", "Recomendación", "Documento"], l = state.oPiezas.filter(function (p) { return p.tipo === state.osub; });
     return "<h1>Contenido</h1><p class='muted small'>Lo que tus agentes dejaron listo para revisar: publicidad, recomendaciones y documentos.</p>" +
-      '<div class="chips">' + tipos.map(function (t) { return '<button data-osub="' + t + '" aria-pressed="' + (state.osub === t) + '">' + ({ "Publicación": "Publicaciones", "Recomendación": "Recomendaciones", Documento: "Documentos" })[t] + " · " + count(state.oPiezas, function (p) { return p.tipo === t; }) + "</button>"; }).join("") + "</div>" +
+      '<div class="chips">' + tipos.map(function (t) { return '<button data-osub="' + t + '" aria-pressed="' + (state.osub === t) + '">' + ({ "Publicación": "Publicaciones", Video: "Videos", "Recomendación": "Recomendaciones", Documento: "Documentos" })[t] + " · " + count(state.oPiezas, function (p) { return p.tipo === t; }) + "</button>"; }).join("") + "</div>" +
       (l.length ? l.map(oPieza).join("") : "<div class='empty'>" + (state.loading ? "Cargando…" : "Todavía no hay nada aquí. Pídeselo a un agente.") + "</div>");
   }
   function viewOAgentes() {
@@ -1236,24 +1256,6 @@
     if (state.view !== "o-agentes") go("o-agentes"); else { await loadMode(); render(); }
     oBajar();
   }
-  // Imagen cuadrada con la marca para acompañar una publicación.
-  function oImagen(p) {
-    var c = document.createElement("canvas"), W = 1080; c.width = W; c.height = W; var x = c.getContext("2d");
-    var g = x.createLinearGradient(0, 0, W, W); g.addColorStop(0, "#0b2540"); g.addColorStop(1, "#123a63"); x.fillStyle = g; x.fillRect(0, 0, W, W);
-    x.fillStyle = "rgba(255,184,28,.10)"; x.beginPath(); x.arc(W - 120, 160, 330, 0, 7); x.fill();
-    x.save(); x.translate(90, 90); x.scale(3.4, 3.4); x.fillStyle = "#ffb81c"; x.fill(new Path2D("M16 2l12.1 7v14L16 30 3.9 23V9z")); x.strokeStyle = "#0b2540"; x.lineWidth = 3.4; x.lineCap = "round"; x.lineJoin = "round"; x.stroke(new Path2D("M10 16.5l4.2 4.2L22.5 12")); x.restore();
-    var head = '"Barlow Semi Condensed", Barlow, system-ui, sans-serif';
-    x.fillStyle = "#fff"; x.font = "700 64px " + head; x.textBaseline = "middle"; x.fillText("Mekachi", 220, 146);
-    var t = (p.titular || p.titulo || "").trim(), size = t.length > 44 ? 92 : t.length > 26 ? 112 : 136, lines = [];
-    x.font = "700 " + size + "px " + head;
-    t.split(/\s+/).forEach(function (w) { var l = lines.length ? lines[lines.length - 1] : null; if (l != null && x.measureText(l + " " + w).width <= W - 180) lines[lines.length - 1] = l + " " + w; else lines.push(w); });
-    var lh = size * 1.08, y0 = W / 2 - (lines.length - 1) * lh / 2 + 20;
-    lines.forEach(function (l, i) { x.fillStyle = i === lines.length - 1 && lines.length > 1 ? "#ffb81c" : "#fff"; x.fillText(l, 90, y0 + i * lh); });
-    x.fillStyle = "#ffb81c"; x.fillRect(90, W - 170, 120, 10);
-    x.fillStyle = "#a9bdd6"; x.font = "500 38px Barlow, system-ui, sans-serif"; x.fillText("Mecánicas de confianza. Repuestos garantizados.", 90, W - 105);
-    c.toBlob(function (b) { var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "mekachi-" + (p.red || "post").toLowerCase() + "-" + p.id.slice(0, 6) + ".png"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000); toast("Imagen descargada"); }, "image/png");
-  }
-
   var VIEW = { "c-inicio": viewCInicio, diag: viewDiag, talleres: viewTalleres, solicitar: viewSolicitar, solicitudes: viewSolicitudes, garaje: viewGaraje,
     "t-inicio": viewTInicio, trabajos: viewTrabajos, catalogo: viewCatalogo, carrito: viewCarrito, pedidos: viewPedidos, perfil: viewPerfil,
     "d-resumen": viewDResumen, "d-pedidos": viewDPedidos, "d-red": viewDRed, "d-inventario": viewDInventario, grua: viewGrua, "g-inicio": viewGInicio, "g-servicios": viewGServicios, "g-perfil": viewGPerfil, "r-entregas": viewREntregas, "r-perfil": viewRPerfil, "d-atencion": viewDAtencion, "d-clientes": viewDClientes, acceso: viewAcceso, cuenta: viewCuenta, "o-inicio": viewOInicio, "o-agentes": viewOAgentes, "o-contenido": viewOContenido };
@@ -1264,6 +1266,7 @@
     app.classList.toggle("wide", state.view === "talleres");
     app.innerHTML = !state.mode ? viewBienvenida() : state.ready ? VIEW[state.view]() : '<div class="empty">Cargando…</div>';
     if (state.view === "talleres" && state.mode && state.ready) initMap();
+    if (state.mode === "oficina" && state.ready) oPreviews();
   }
   function refreshList() {
     nav();
@@ -1352,7 +1355,15 @@
     else if (d.opest) await done(await call(sb.from("mekachi_oficina_piezas").update({ estado: d.v }).eq("id", d.opest)), "Marcado como " + d.v.toLowerCase() + ".");
     else if (d.opdel) { if (window.confirm("¿Eliminar esta pieza?")) await done(await call(sb.from("mekachi_oficina_piezas").delete().eq("id", d.opdel)), "Eliminado."); }
     else if (d.ocopy) { o = byId(state.oPiezas, d.ocopy); try { await navigator.clipboard.writeText(o.contenido); toast("Texto copiado"); } catch (err) { toast("No se pudo copiar. Selecciona el texto a mano."); } }
-    else if (d.oimg) { o = byId(state.oPiezas, d.oimg); if (document.fonts && document.fonts.load) { try { await document.fonts.load('700 100px "Barlow Semi Condensed"'); } catch (err) {} } oImagen(o); }
+    else if (d.oimg) { b.disabled = true; var nn = await window.MekachiMedios.descargarImagenes(byId(state.oPiezas, d.oimg)); b.disabled = false; toast(nn > 1 ? nn + " imágenes descargadas" : "Imagen descargada"); }
+    else if (d.ovid) { var cv = $('canvas[data-oprev="' + d.ovid + '"]'); if (cv) { oParar.forEach(function (f) { f(); }); oParar = [await window.MekachiMedios.reproducir(byId(state.oPiezas, d.ovid), cv)]; } }
+    else if (d.ovdl) {
+      b.disabled = true; var txt = b.textContent;
+      try { var rv = await window.MekachiMedios.descargarVideo(byId(state.oPiezas, d.ovdl), function (f) { b.textContent = "Grabando " + Math.round(f * 100) + " %"; }); toast("Video descargado (" + rv.tipo.toUpperCase() + ", " + Math.round(rv.segundos) + " s)"); }
+      catch (err) { toast(err.message || "No se pudo grabar el video."); }
+      b.textContent = txt; b.disabled = false;
+    }
+    else if (d.oguion) { o = byId(state.oPiezas, d.oguion); window.MekachiMedios.bajar(new Blob([JSON.stringify(window.MekachiMedios.exportarGuion(o), null, 2)], { type: "application/json" }), "guion-" + o.id.slice(0, 6) + ".json"); toast("Guion descargado. Sirve para Remotion y HyperFrames."); }
     else if (d.inuevo) { state.inuevo = !state.inuevo; render(); }
     else if (d.icsv) csvDescarga("mekachi-inventario", [["Código", "codigo"], ["Categoría", "cat"], ["Nombre", "nombre"], ["Compatibilidad", "compat"], ["Existencias", "stock"], ["Mínimo", "minimo"], ["Costo", "costo"], ["Precio", "precio"], ["Proveedor", "proveedor"], ["Ubicación", "ubicacion"], ["Activo", "activo"]], invFiltrado());
     else if ("cli" in d) await abrirCliente(d.cli);

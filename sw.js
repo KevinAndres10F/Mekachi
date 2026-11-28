@@ -1,6 +1,6 @@
 // Mekachi: primero la red y, si no hay señal, la última copia guardada.
-var CACHE = "mekachi-v2";
-var SHELL = ["./", "index.html", "brand.css", "app.js", "datos.js", "vendor/supabase/supabase.js", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "icons/icon.svg"];
+var CACHE = "mekachi-v3";
+var SHELL = ["./", "index.html", "brand.css", "app.js", "datos.js", "medios.js", "vendor/supabase/supabase.js", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "icons/icon.svg"];
 self.addEventListener("install", function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));
 });

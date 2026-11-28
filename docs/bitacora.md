@@ -18,6 +18,9 @@ No se guardan aquí claves, contraseñas ni teléfonos personales. Las claves vi
 | Presentación de ventas para talleres | `/talleres/` |
 | Asistente de WhatsApp | `supabase/functions/mekachi-whatsapp/` |
 | Agentes de la Oficina | `supabase/functions/mekachi-oficina/` |
+| Generador de imágenes y video de la app | `medios.js` |
+| Video con Remotion y HyperFrames | `/video/` (instrucciones en `video/README.md`) |
+| Fotos del demo y sus créditos | `/fotos/` |
 | Proceso de WhatsApp | `docs/whatsapp-setup.md` |
 | Base de datos | Supabase, tablas con prefijo `mekachi_` |
 | Publicación | Netlify, desde la rama `main` |
@@ -60,6 +63,10 @@ No se guardan aquí claves, contraseñas ni teléfonos personales. Las claves vi
 - **Plan de negocios 2027–2036.** 27 láminas con mercado, economía por taller, expansión a todo Ecuador, proyecciones a 5 y 10 años, escenarios, inversión, equipo y riesgos.
 - **Oficina.** Módulo solo para el fundador con seis agentes de IA (Dirección, Marketing, Ventas, Compras, Legal y Finanzas), informe del día, recomendaciones y contenido con imagen de marca descargable.
 - **Bitácora** (este documento) y **presentación de ventas para talleres** (`/talleres/`).
+- **Imágenes y videos desde la Oficina.** Seis plantillas de imagen (titular, foto, oferta, consejo, testimonio y carrusel) en tres formatos (cuadrado, vertical e historia). El agente de Marketing elige plantilla, formato y foto; la app dibuja la imagen y graba el video en el navegador.
+- **Remotion y HyperFrames.** Proyectos en `/video` que convierten el mismo guion en MP4. Los dos se probaron y producen el mismo video.
+- **Fotos de archivo.** Cinco fotos de Wikimedia Commons con licencia libre y crédito visible, usadas en plantillas, videos y en seis talleres del demo. Créditos en `fotos/CREDITOS.md`.
+- **Video «Cómo pedir un repuesto»** (30 segundos), incluido en la presentación de ventas.
 
 ---
 
@@ -102,7 +109,8 @@ Probado en el navegador con cuentas de prueba, salvo donde se indica.
 ### Oficina
 - Seis agentes que consultan los datos de la plataforma. Probados: Ventas, Legal y Marketing. Dirección, Compras y Finanzas usan el mismo mecanismo y no se probaron en el navegador.
 - Marketing, Compras y Legal buscan en la web y citan la fuente.
-- Contenido con texto para copiar e imagen para descargar.
+- Contenido con texto para copiar, imagen para descargar (seis plantillas, tres formatos, carrusel de varios cuadros) y video corto que se reproduce y se descarga en MP4.
+- Probado de punta a punta: Marketing dejó una oferta, un carrusel, una historia y un video de 24 segundos en 47 segundos.
 
 ### WhatsApp
 - Asistente activo en modo de pruebas (función en versión 6).
@@ -129,6 +137,9 @@ Probado en el navegador con cuentas de prueba, salvo donde se indica.
 ### De producto
 - [ ] Informe automático de la Oficina cada mañana.
 - [ ] Conectar Instagram, Facebook y el perfil de Google para publicar desde la Oficina.
+- [ ] Subir fotos propias de talleres, bodega y reparto, y reemplazar las de archivo.
+- [ ] Música o voz en los videos; hoy salen sin sonido.
+- [ ] Servicio de render para que la Oficina entregue el MP4 de Remotion o HyperFrames sin usar la línea de comandos.
 - [ ] Registrar gastos fijos, sueldos y caja, para que Finanzas trabaje con datos completos.
 - [ ] Pagos en línea y factura electrónica.
 - [ ] Transcripción de audios en WhatsApp.
@@ -141,7 +152,7 @@ Quedaron en la base y requieren aprobación del fundador en Supabase:
 - Tres usuarios `prueba-*@mekachi-prueba.invalid`.
 - "Taller Prueba Reparto" y sus pedidos MK-0007 a MK-0009.
 - Repartidora "Rita Prueba" y "Bodega Prueba Sur" (cerrada, con 2 unidades por devolver a la Bodega Norte).
-- Chats de prueba en la Oficina y dos publicaciones de ejemplo de Marketing.
+- Chats de prueba en la Oficina y las publicaciones y el video de ejemplo de Marketing (sirven de muestra; se pueden descartar desde la app).
 
 ---
 
@@ -152,6 +163,8 @@ Quedaron en la base y requieren aprobación del fundador en Supabase:
 - **Formas de pago:** transferencia, Deuna y efectivo contra entrega.
 - **Proyecciones del plan de negocios:** son supuestos del escenario base, no resultados.
 - **Todas las cifras de la app son de demostración** hasta cargar datos reales.
+- **Las fotos son de archivo**, no de talleres afiliados. Varias tienen licencia CC BY-SA, que obliga a dar crédito y a compartir las obras derivadas con la misma licencia; para publicidad real conviene usar fotos propias.
+- **Remotion** pide licencia de pago a empresas a partir de cierto tamaño; hay que revisar sus condiciones antes de usarlo comercialmente.
 
 ---
 

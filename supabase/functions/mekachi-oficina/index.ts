@@ -26,7 +26,7 @@ const AGENTES: Record<string, Agente> = {
   },
   marketing: {
     nombre: "Marketing", web: true,
-    rol: "Eres la responsable de marketing. Creas publicidad para Instagram, Facebook, TikTok, WhatsApp y el perfil de Google: textos listos para publicar, ideas de video, calendarios y campañas para captar talleres (el cliente que paga) y conductores. Tono: cercano, claro, ecuatoriano, sin exagerar ni prometer lo que la empresa aún no cumple. Cada publicación que propongas guárdala con guardar_pieza (tipo Publicación) con la red, la fecha sugerida, el texto completo con hashtags y un titular de máximo 60 caracteres para la imagen. No puedes publicar tú: el fundador copia el texto y descarga la imagen desde la pestaña Contenido.",
+    rol: "Eres la responsable de marketing. Creas publicidad para Instagram, Facebook, TikTok, WhatsApp y el perfil de Google: textos listos para publicar, ideas de video, calendarios y campañas para captar talleres (el cliente que paga) y conductores. Tono: cercano, claro, ecuatoriano, sin exagerar ni prometer lo que la empresa aún no cumple. Cada publicación que propongas guárdala con guardar_pieza (tipo Publicación) con la red, la fecha sugerida, el texto completo con hashtags, un titular de máximo 60 caracteres y el diseno de la imagen. Los videos cortos para reels, historias y TikTok guárdalos como tipo Video con su guion en diseno. No puedes publicar tú: el fundador copia el texto y descarga la imagen o el video desde la pestaña Contenido.",
   },
   ventas: {
     nombre: "Ventas", web: false,
@@ -53,7 +53,7 @@ async function config(): Promise<Record<string, string>> {
   return c;
 }
 
-function herramientas(agente: string, creadas: string[]) {
+function herramientas(agente: string, creadas: string[], fotos: string[]) {
   // deno-lint-ignore no-explicit-any
   const lista: any[] = [
     betaTool({
@@ -168,21 +168,39 @@ function herramientas(agente: string, creadas: string[]) {
     }),
     betaTool({
       name: "guardar_pieza",
-      description: "Guarda un entregable en la pestaña Contenido de la Oficina para que el fundador lo revise: una Publicación para redes, una Recomendación accionable o un Documento (contrato, política, guion, plan). Úsala cada vez que produzcas algo que deba conservarse; en el chat basta un resumen.",
+      description: "Guarda un entregable en la pestaña Contenido de la Oficina para que el fundador lo revise: una Publicación para redes (con su imagen), un Video corto, una Recomendación accionable o un Documento (contrato, política, guion, plan). Úsala cada vez que produzcas algo que deba conservarse; en el chat basta un resumen. Para Publicación y Video incluye siempre el objeto diseno: la app genera con él la imagen o el video con la marca de Mekachi.",
       inputSchema: {
         type: "object",
         properties: {
-          tipo: { type: "string", enum: ["Publicación", "Recomendación", "Documento"] },
+          tipo: { type: "string", enum: ["Publicación", "Video", "Recomendación", "Documento"] },
           titulo: { type: "string", description: "Título corto que identifique la pieza." },
-          contenido: { type: "string", description: "Texto completo y listo para usar, en texto plano." },
-          red: { type: "string", enum: ["Instagram", "Facebook", "TikTok", "WhatsApp", "Google", ""], description: "Solo para Publicación: la red de destino." },
-          titular: { type: "string", description: "Solo para Publicación: frase de hasta 60 caracteres que irá sobre la imagen." },
+          contenido: { type: "string", description: "Texto completo y listo para usar, en texto plano. En Publicación y Video es el texto que acompaña la pieza en la red, con hashtags." },
+          red: { type: "string", enum: ["Instagram", "Facebook", "TikTok", "WhatsApp", "Google", ""], description: "Para Publicación y Video: la red de destino." },
+          titular: { type: "string", description: "Para Publicación: frase de hasta 60 caracteres que va sobre la imagen." },
           fecha: { type: "string", description: "Fecha sugerida AAAA-MM-DD para publicar o ejecutar. Opcional." },
+          diseno: {
+            type: "object",
+            description: "Cómo se dibuja la imagen o el video. Imagen: elige plantilla y formato y llena los campos que esa plantilla usa. Video: llena formato, escenas y cierre.",
+            properties: {
+              plantilla: { type: "string", enum: ["titular", "foto", "oferta", "consejo", "testimonio", "carrusel"], description: "titular: frase grande sobre azul. foto: foto a pantalla completa con titular y texto. oferta: repuesto con etiqueta, titular (nombre del repuesto), texto (compatibilidad) y precio. consejo: fondo claro con titular y explicación para conductores o talleres. testimonio: cita en titular, autor y texto (taller o sector); solo con testimonios reales que te dé el fundador. carrusel: varios cuadros que se deslizan." },
+              formato: { type: "string", enum: ["cuadrado", "vertical", "historia"], description: "cuadrado 1080×1080 para el muro; vertical 1080×1350 para el muro de Instagram; historia 1080×1920 para historias, reels y TikTok. Los videos usan historia o cuadrado." },
+              foto: { type: "string", enum: fotos.length ? fotos : [""], description: "Identificador de una foto del catálogo. Úsala en las plantillas foto, oferta y testimonio." },
+              texto: { type: "string", description: "Texto secundario breve, de hasta 140 caracteres." },
+              etiqueta: { type: "string", description: "Etiqueta corta, por ejemplo «Repuesto de la semana» o «Consejo Mekachi»." },
+              precio: { type: "string", description: "Solo para oferta: precio sin IVA tal como sale del catálogo, por ejemplo «$28,00». No inventes precios." },
+              autor: { type: "string", description: "Solo para testimonio: nombre de quien lo dice." },
+              cuadros: { type: "array", description: "Solo para carrusel: de 3 a 7 cuadros. El primero es la portada, los intermedios se numeran solos y el último es el cierre con la invitación.", items: { type: "object", properties: { titular: { type: "string" }, texto: { type: "string" }, foto: { type: "string", enum: fotos.length ? fotos : [""] } }, required: ["titular"], additionalProperties: false } },
+              escenas: { type: "array", description: "Solo para Video: de 3 a 8 escenas. Cada una muestra un titular de hasta 45 caracteres y un texto de hasta 90 sobre una foto o sobre el fondo azul. La app añade sola una escena final con el logo.", items: { type: "object", properties: { titular: { type: "string" }, texto: { type: "string" }, foto: { type: "string", enum: fotos.length ? fotos : [""] }, segundos: { type: "number", description: "Entre 2 y 8. Por defecto 3,5." } }, required: ["titular"], additionalProperties: false } },
+              cierre: { type: "string", description: "Solo para Video: frase de la escena final, por ejemplo «Registra tu taller hoy»." },
+            },
+            additionalProperties: false,
+          },
         },
         required: ["tipo", "titulo", "contenido"], additionalProperties: false,
       },
-      run: async (i: { tipo: string; titulo: string; contenido: string; red?: string; titular?: string; fecha?: string }) => {
-        const { error } = await db.from("mekachi_oficina_piezas").insert({ agente, tipo: i.tipo, titulo: i.titulo.slice(0, 160), contenido: i.contenido, red: i.red ?? "", titular: (i.titular ?? "").slice(0, 90), fecha: /^\d{4}-\d{2}-\d{2}$/.test(i.fecha ?? "") ? i.fecha : null });
+      // deno-lint-ignore no-explicit-any
+      run: async (i: { tipo: string; titulo: string; contenido: string; red?: string; titular?: string; fecha?: string; diseno?: any }) => {
+        const { error } = await db.from("mekachi_oficina_piezas").insert({ agente, tipo: i.tipo, titulo: i.titulo.slice(0, 160), contenido: i.contenido, red: i.red ?? "", titular: (i.titular ?? "").slice(0, 90), diseno: i.diseno && typeof i.diseno === "object" ? i.diseno : {}, fecha: /^\d{4}-\d{2}-\d{2}$/.test(i.fecha ?? "") ? i.fecha : null });
         if (error) return "No se pudo guardar: " + error.message;
         creadas.push(i.titulo);
         return "Guardado en Contenido como " + i.tipo + ".";
@@ -191,7 +209,7 @@ function herramientas(agente: string, creadas: string[]) {
     betaTool({
       name: "leer_piezas",
       description: "Lista lo que ya está guardado en Contenido (publicaciones, recomendaciones y documentos) con su estado, para no repetir y para dar seguimiento a recomendaciones abiertas.",
-      inputSchema: { type: "object", properties: { tipo: { type: "string", enum: ["Publicación", "Recomendación", "Documento"] } }, additionalProperties: false },
+      inputSchema: { type: "object", properties: { tipo: { type: "string", enum: ["Publicación", "Video", "Recomendación", "Documento"] } }, additionalProperties: false },
       run: async (i: { tipo?: string }) => {
         let q = db.from("mekachi_oficina_piezas").select("agente,tipo,titulo,red,estado,fecha,created_at").order("created_at", { ascending: false }).limit(40);
         if (i.tipo) q = q.eq("tipo", i.tipo);
@@ -207,7 +225,8 @@ function herramientas(agente: string, creadas: string[]) {
 async function trabajar(chat: string, agente: string) {
   const creadas: string[] = [];
   try {
-    const [{ data: hist }, cfg] = await Promise.all([db.from("mekachi_oficina_mensajes").select("rol,texto").eq("chat_id", chat).order("id", { ascending: false }).limit(30), config()]);
+    const [{ data: hist }, cfg, { data: fts }] = await Promise.all([db.from("mekachi_oficina_mensajes").select("rol,texto").eq("chat_id", chat).order("id", { ascending: false }).limit(30), config(), db.from("mekachi_fotos").select("id,descripcion,tema,es_demo").eq("activa", true).order("id")]);
+    const fotos = fts ?? [];
     const messages = (hist ?? []).reverse().map((m) => ({ role: m.rol as "user" | "assistant", content: m.texto }));
     while (messages.length && messages[0].role !== "user") messages.shift();
     const a = AGENTES[agente];
@@ -217,6 +236,7 @@ async function trabajar(chat: string, agente: string) {
       cfg.modo_demo === "true" || cfg.modo_demo === "\"true\"" ? "La plataforma está en MODO DEMOSTRACIÓN: talleres, repuestos, precios, pedidos y grúas son de ejemplo. Cuando des cifras sacadas de las herramientas, di una vez que provienen de datos de demostración y no de ventas reales." : "",
       cfg.datos_negocio ? "Datos del negocio registrados por el fundador (los que digan PENDIENTE aún no están definidos; no los inventes): " + cfg.datos_negocio : "",
       "Cómo trabajar: consulta las herramientas de datos antes de afirmar cifras y nunca inventes números, nombres de clientes, leyes ni proveedores. Si falta un dato, dilo y pide lo mínimo necesario. Da recomendaciones concretas, con el dato que las respalda y el siguiente paso. Lo que no puedes hacer: publicar en redes, enviar mensajes a clientes, mover dinero, firmar ni emitir compras; preparas todo y el fundador decide y ejecuta.",
+      agente === "marketing" ? "Imágenes y videos: no dibujas ni grabas tú. Describes el diseño en guardar_pieza y la app lo genera con la marca (colores, logo y tipografía ya están puestos). Varía las plantillas y los formatos en lugar de repetir siempre la misma. Un video corto son de 3 a 8 escenas con frases breves; piensa en alguien que lo ve sin sonido. Usa precios solo si salen de inventario_y_compras. Fotos disponibles (identificador: qué muestra): " + (fotos.length ? fotos.map((f) => f.id + ": " + f.descripcion).join("; ") : "ninguna todavía") + (fotos.some((f) => f.es_demo) ? ". Son fotos de archivo con licencia libre, no de talleres afiliados: sirven de ambiente, no las presentes como talleres de la red." : ".") : "",
       "Formato: español de Ecuador, directo y sin relleno. Escribe en texto plano, sin Markdown: nada de asteriscos, almohadillas ni tablas. Usa párrafos cortos y listas con guion cuando ayuden. Las piezas largas van en guardar_pieza; en el chat deja el resumen y di dónde quedó guardado.",
       "Fecha de hoy: " + new Date().toLocaleDateString("es-EC", { timeZone: "America/Guayaquil", weekday: "long", year: "numeric", month: "long", day: "numeric" }) + ".",
     ].filter(Boolean).join("\n\n");
@@ -229,7 +249,7 @@ async function trabajar(chat: string, agente: string) {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       system,
-      tools: herramientas(agente, creadas),
+      tools: herramientas(agente, creadas, fotos.map((f) => f.id)),
       messages,
       max_iterations: 10,
     });

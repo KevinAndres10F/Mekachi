@@ -1,0 +1,65 @@
+{
+  "titulo": "Cómo pedir un repuesto en Mekachi",
+  "formato": "historia",
+  "ancho": 1080,
+  "alto": 1920,
+  "fps": 30,
+  "escenas": [
+    {
+      "titular": "¿El carro en el elevador y falta la pieza?",
+      "texto": "No salgas del taller a buscarla.",
+      "foto": "fotos/taller-interior.jpg",
+      "segundos": 4,
+      "cierre": false,
+      "credito": "Martin Vorel, CC BY-SA 4.0"
+    },
+    {
+      "titular": "Busca el repuesto en la app",
+      "texto": "Por pieza o por modelo. Ves el precio y si está en bodega.",
+      "foto": "fotos/repuestos-estanteria.jpg",
+      "segundos": 4.5,
+      "cierre": false,
+      "credito": "Visitor7, CC BY-SA 3.0"
+    },
+    {
+      "titular": "Pide en dos toques",
+      "texto": "Si no está en la lista, lo describes y te lo cotizamos.",
+      "foto": "",
+      "segundos": 4,
+      "cierre": false,
+      "credito": ""
+    },
+    {
+      "titular": "Te avisamos cuando sale de bodega",
+      "texto": "Ves la hora de salida y quién te lo lleva.",
+      "foto": "",
+      "segundos": 4,
+      "cierre": false,
+      "credito": ""
+    },
+    {
+      "titular": "Lo recibes y sigues trabajando",
+      "texto": "Entregas un código de 4 dígitos y listo.",
+      "foto": "fotos/mecanicos-motor.jpg",
+      "segundos": 4.5,
+      "cierre": false,
+      "credito": "Kwamitsey, CC BY 4.0"
+    },
+    {
+      "titular": "Envío incluido en ruta programada",
+      "texto": "¿Urgente? Sale de inmediato por $3 más IVA.",
+      "foto": "",
+      "segundos": 4.5,
+      "cierre": false,
+      "credito": ""
+    },
+    {
+      "titular": "Registra tu taller hoy",
+      "texto": "Mecánicas de confianza. Repuestos garantizados.",
+      "foto": "",
+      "segundos": 4,
+      "cierre": true,
+      "credito": ""
+    }
+  ]
+}
